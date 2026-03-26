@@ -14,7 +14,7 @@ bot = telebot.TeleBot(API_TOKEN)
 translator = Translator()
 
 def fix_arabic(text):
-    # وظيفة لربط الحروف العربية وتصحيح الاتجاه
+    # دالة معالجة النصوص العربية لتظهر بشكل صحيح في الـ PDF
     reshaped_text = arabic_reshaper.reshape(text)
     return get_display(reshaped_text)
 
@@ -38,7 +38,7 @@ def handle_docs(message):
         bot.reply_to(message, "يرجى إرسال ملف PDF.")
         return
 
-    msg = bot.reply_to(message, "⏳ جاري التنسيق والترجمة المزدوجة (انتظر قليلاً)...")
+    msg = bot.reply_to(message, "⏳ جاري التنسيق والترجمة المزدوجة (إنجليزي + عربي)...")
 
     try:
         file_info = bot.get_file(message.document.file_id)
@@ -50,12 +50,12 @@ def handle_docs(message):
             f.write(downloaded_file)
 
         pdf_out = FPDF()
+        # محاولة تحميل الخط Amiri لضمان دعم العربية
         try:
-            # استخدام ملف Amiri.ttf الموجود في مستودع GitHub الخاص بك
             pdf_out.add_font('Amiri', '', 'Amiri.ttf', uni=True)
             pdf_out.set_font('Amiri', size=11)
         except:
-            # خط بديل في حال فشل تحميل ملف الخط لتجنب الـ Crash
+            # في حال فشل تحميل الخط، نستخدم Arial لتجنب الانهيار (Crash)
             pdf_out.set_font("Arial", size=11)
 
         pdf_out.set_margins(15, 15, 15)
@@ -74,20 +74,20 @@ def handle_docs(message):
                             translated = translator.translate(clean_line, dest='ar').text
                             fixed_ar = fix_arabic(translated)
                             
-                            # التحقق من نهاية الصفحة
+                            # الانتقال لصفحة جديدة عند الامتلاء
                             if pdf_out.get_y() > 260: pdf_out.add_page()
                             
-                            # كتابة النص الإنجليزي (لون أسود - يسار)
+                            # طباعة النص الإنجليزي (لون أسود - محاذاة لليسار)
                             pdf_out.set_text_color(0, 0, 0)
                             pdf_out.multi_cell(0, 7, clean_line, align='L')
                             
-                            # كتابة النص العربي المترجم (لون أحمر - يمين)
+                            # طباعة النص العربي (لون أحمر - محاذاة لليمين)
                             pdf_out.set_text_color(220, 20, 60)
                             pdf_out.multi_cell(0, 7, fixed_ar, align='R')
-                            pdf_out.ln(2) # مسافة بسيطة بين الفقرات
+                            pdf_out.ln(2)
                         except: continue
 
-            # معالجة الصور (الحفاظ على ميزة الشعارات)
+            # معالجة الصور مع فلتر الشعارات
             for img in page.get_images(full=True):
                 try:
                     xref = img[0]
@@ -105,7 +105,7 @@ def handle_docs(message):
 
         pdf_out.output(output_pdf_name)
         with open(output_pdf_name, 'rb') as f:
-            bot.send_document(message.chat.id, f, caption=f"✅ تم الترجمة المزدوجة بنجاح لدفعة 2025 \nقناتنا: {CHANNEL_USERNAME}")
+            bot.send_document(message.chat.id, f, caption=f"✅ تم الترجمة بنجاح لدفعة 2025 \nقناتنا: {CHANNEL_USERNAME}")
 
         doc.close()
         os.remove(input_pdf_name)
