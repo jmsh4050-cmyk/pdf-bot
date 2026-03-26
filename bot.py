@@ -14,7 +14,7 @@ bot = telebot.TeleBot(API_TOKEN)
 translator = Translator()
 
 def fix_arabic(text):
-    # ربط الحروف العربية وتعديل الاتجاه
+    # وظيفة لربط الحروف العربية وتصحيح الاتجاه
     reshaped_text = arabic_reshaper.reshape(text)
     return get_display(reshaped_text)
 
@@ -28,62 +28,90 @@ def is_subscribed(user_id):
 def handle_docs(message):
     user_id = message.from_user.id
     if not is_subscribed(user_id):
-        bot.reply_to(message, f"🚫 اشترك أولاً في قناة المطور:\n{CHANNEL_USERNAME}")
+        markup = telebot.types.InlineKeyboardMarkup()
+        btn = telebot.types.InlineKeyboardButton("اشترك في القناة أولاً ✅", url=f"https://t.me/{CHANNEL_USERNAME[1:]}")
+        markup.add(btn)
+        bot.reply_to(message, f"🚫 لاستخدام البوت، اشترك في القناة:\n{CHANNEL_USERNAME}", reply_markup=markup)
         return
 
     if not message.document.file_name.lower().endswith('.pdf'):
         bot.reply_to(message, "يرجى إرسال ملف PDF.")
         return
 
-    msg = bot.reply_to(message, "⏳ جاري ترجمة وتنسيق المحاضرة...")
+    msg = bot.reply_to(message, "⏳ جاري التنسيق والترجمة المزدوجة (انتظر قليلاً)...")
 
     try:
         file_info = bot.get_file(message.document.file_id)
         downloaded_file = bot.download_file(file_info.file_path)
-        input_pdf = f"in_{user_id}.pdf"
-        output_pdf = f"Translated_{message.document.file_name}"
+        input_pdf_name = f"in_{user_id}.pdf"
+        output_pdf_name = f"Translated_{message.document.file_name}"
 
-        with open(input_pdf, 'wb') as f:
+        with open(input_pdf_name, 'wb') as f:
             f.write(downloaded_file)
 
         pdf_out = FPDF()
-        # استخدام ملف الخط Amiri.ttf الموجود عندك بالـ GitHub
         try:
+            # استخدام ملف Amiri.ttf الموجود في مستودع GitHub الخاص بك
             pdf_out.add_font('Amiri', '', 'Amiri.ttf', uni=True)
             pdf_out.set_font('Amiri', size=11)
         except:
+            # خط بديل في حال فشل تحميل ملف الخط لتجنب الـ Crash
             pdf_out.set_font("Arial", size=11)
 
+        pdf_out.set_margins(15, 15, 15)
         pdf_out.add_page()
-        doc = fitz.open(input_pdf)
+        doc = fitz.open(input_pdf_name)
 
         for page in doc:
             text = page.get_text("text")
             if text.strip():
                 lines = text.split('\n')
                 for line in lines:
-                    if len(line.strip()) > 3:
+                    clean_line = line.strip()
+                    if len(clean_line) > 3:
                         try:
                             # الترجمة للعربية
-                            translated = translator.translate(line, dest='ar').text
+                            translated = translator.translate(clean_line, dest='ar').text
                             fixed_ar = fix_arabic(translated)
+                            
+                            # التحقق من نهاية الصفحة
                             if pdf_out.get_y() > 260: pdf_out.add_page()
-                            # كتابة النص الأصلي والمترجم
+                            
+                            # كتابة النص الإنجليزي (لون أسود - يسار)
                             pdf_out.set_text_color(0, 0, 0)
-                            pdf_out.multi_cell(0, 8, line, align='L')
+                            pdf_out.multi_cell(0, 7, clean_line, align='L')
+                            
+                            # كتابة النص العربي المترجم (لون أحمر - يمين)
                             pdf_out.set_text_color(220, 20, 60)
-                            pdf_out.multi_cell(0, 8, fixed_ar, align='R')
-                            pdf_out.ln(2)
+                            pdf_out.multi_cell(0, 7, fixed_ar, align='R')
+                            pdf_out.ln(2) # مسافة بسيطة بين الفقرات
                         except: continue
 
-        pdf_out.output(output_pdf)
-        with open(output_pdf, 'rb') as f:
-            bot.send_document(message.chat.id, f, caption="✅ تم الترجمة لدفعة 2025")
+            # معالجة الصور (الحفاظ على ميزة الشعارات)
+            for img in page.get_images(full=True):
+                try:
+                    xref = img[0]
+                    base_image = doc.extract_image(xref)
+                    if base_image["width"] < 100 or base_image["height"] < 100: continue
+                    
+                    img_name = f"tmp_{user_id}_{xref}.{base_image['ext']}"
+                    with open(img_name, "wb") as f:
+                        f.write(base_image["image"])
+                    
+                    if pdf_out.get_y() > 220: pdf_out.add_page()
+                    pdf_out.image(img_name, w=100)
+                    os.remove(img_name)
+                except: pass
+
+        pdf_out.output(output_pdf_name)
+        with open(output_pdf_name, 'rb') as f:
+            bot.send_document(message.chat.id, f, caption=f"✅ تم الترجمة المزدوجة بنجاح لدفعة 2025 \nقناتنا: {CHANNEL_USERNAME}")
 
         doc.close()
-        os.remove(input_pdf)
-        os.remove(output_pdf)
+        os.remove(input_pdf_name)
+        os.remove(output_pdf_name)
+
     except Exception as e:
-        bot.reply_to(message, f"حدث خطأ: {str(e)}")
+        bot.reply_to(message, f"حدث خطأ فني: {str(e)}")
 
 bot.polling()
