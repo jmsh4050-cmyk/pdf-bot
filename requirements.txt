@@ -1,4 +1,6 @@
-python-telegram-bot
-fpdf2
+pyTelegramBotAPI
+fpdf
+arabic-reshaper
+python-bidi
 googletrans==4.0.0-rc1
 PyMuPDF
