@@ -8,17 +8,15 @@ from bidi.algorithm import get_display
 
 # --- الإعدادات ---
 API_TOKEN = '7924093069:AAGjjy7SomYnfUWSWu1xGY337aIYzT42tCA'
-CHANNEL_USERNAME = '@W_S_B52' # تأكد من أن البوت "أدمن" في هذه القناة
+CHANNEL_USERNAME = '@W_S_B52' # تأكد أن البوت أدمن هنا
 
 bot = telebot.TeleBot(API_TOKEN)
 
 def fix_arabic(text):
-    # دالة معالجة النصوص العربية
     reshaped_text = arabic_reshaper.reshape(text)
     return get_display(reshaped_text)
 
 def is_subscribed(user_id):
-    # فحص إذا كان المستخدم مشتركاً في قناتك
     try:
         status = bot.get_chat_member(CHANNEL_USERNAME, user_id).status
         return status in ['member', 'administrator', 'creator']
@@ -27,13 +25,11 @@ def is_subscribed(user_id):
 
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
-    bot.reply_to(message, f"أهلاً وسام! أرسل ملف PDF لترجمته ترجمة مزدوجة مع الصور.\nيجب الاشتراك بقناتنا: {CHANNEL_USERNAME}")
+    bot.reply_to(message, f"أهلاً وسام! أرسل ملف PDF لترجمته ترجمة مزدوجة مع الصور الصافية.\nيجب الاشتراك بقناتنا: {CHANNEL_USERNAME}")
 
 @bot.message_handler(content_types=['document'])
 def handle_docs(message):
     user_id = message.from_user.id
-    
-    # التحقق من الاشتراك الإجباري
     if not is_subscribed(user_id):
         markup = telebot.types.InlineKeyboardMarkup()
         btn = telebot.types.InlineKeyboardButton("اشترك في القناة أولاً ✅", url=f"https://t.me/{CHANNEL_USERNAME[1:]}")
@@ -45,7 +41,7 @@ def handle_docs(message):
         bot.reply_to(message, "يرجى إرسال ملف PDF.")
         return
 
-    msg = bot.reply_to(message, "⏳ جاري استخراج الصور وترجمة النصوص (انتظر قليلاً)...")
+    msg = bot.reply_to(message, "⏳ جاري استخراج الصور الصافية وترجمة النصوص...")
 
     try:
         file_info = bot.get_file(message.document.file_id)
@@ -58,7 +54,6 @@ def handle_docs(message):
 
         pdf_out = FPDF()
         try:
-            # استخدام الخط اللي رفعته بـ GitHub
             pdf_out.add_font('Amiri', '', 'Amiri.ttf', uni=True)
             pdf_out.set_font('Amiri', size=11)
         except:
@@ -68,18 +63,16 @@ def handle_docs(message):
         doc = fitz.open(input_pdf)
 
         for page in doc:
-            # --- معالجة النصوص ---
+            # --- النصوص ---
             text = page.get_text("text")
             if text.strip():
                 lines = text.split('\n')
                 for line in lines:
                     if len(line.strip()) > 3:
                         try:
-                            # الترجمة المستقرة
                             translated = GoogleTranslator(source='en', target='ar').translate(line)
                             fixed_ar = fix_arabic(translated)
                             if pdf_out.get_y() > 250: pdf_out.add_page()
-                            
                             pdf_out.set_text_color(0, 0, 0)
                             pdf_out.multi_cell(0, 8, line, align='L')
                             pdf_out.set_text_color(220, 20, 60)
@@ -87,25 +80,30 @@ def handle_docs(message):
                             pdf_out.ln(2)
                         except: continue
 
-            # --- معالجة الصور ---
+            # --- الصور (بدون تكرار وبفلتر الحجم) ---
+            processed_images = []
             for img in page.get_images(full=True):
                 try:
                     xref = img[0]
+                    if xref in processed_images: continue
                     base_image = doc.extract_image(xref)
-                    if base_image["width"] < 100 or base_image["height"] < 100: continue
+                    # تجاهل اللوغوات الصغيرة (أقل من 150 بكسل)
+                    if base_image["width"] < 150 or base_image["height"] < 150: continue
 
                     img_name = f"tmp_{user_id}_{xref}.{base_image['ext']}"
                     with open(img_name, "wb") as f:
                         f.write(base_image["image"])
                     
-                    if pdf_out.get_y() > 200: pdf_out.add_page()
-                    pdf_out.image(img_name, w=120)
+                    if pdf_out.get_y() > 190: pdf_out.add_page()
+                    pdf_out.image(img_name, w=110) # الحجم المثالي
+                    pdf_out.ln(5)
+                    processed_images.append(xref)
                     os.remove(img_name)
                 except: pass
 
         pdf_out.output(output_pdf)
         with open(output_pdf, 'rb') as f:
-            bot.send_document(message.chat.id, f, caption=f"✅ تم الترجمة لدفعة 2025\nقناتنا: {CHANNEL_USERNAME}")
+            bot.send_document(message.chat.id, f, caption=f"✅ تم الترجمة بنجاح لدفعة ابطال التمريض🔥\nقناتنا: {CHANNEL_USERNAME}")
 
         doc.close()
         os.remove(input_pdf)
@@ -115,5 +113,3 @@ def handle_docs(message):
         bot.reply_to(message, f"حدث خطأ: {str(e)}")
 
 bot.polling()
-
-
