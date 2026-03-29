@@ -51,7 +51,7 @@ def handle_docs(message):
     user_data[user_id] = {'file_id': message.document.file_id, 'file_name': message.document.file_name}
     
     markup = telebot.types.InlineKeyboardMarkup()
-    btn1 = telebot.types.InlineKeyboardButton("1️⃣ شكل كلاسيك (🙂‍↔️)", callback_data="style_fpdf")
+    btn1 = telebot.types.InlineKeyboardButton("1️⃣ شكل كلاسيك (تم حل الكراش ✅)", callback_data="style_fpdf")
     btn2 = telebot.types.InlineKeyboardButton("2️⃣ شكل الحقن (خط ناعم)", callback_data="style_inject")
     btn3 = telebot.types.InlineKeyboardButton("3️⃣ شكل الهايلايت (منسق)", callback_data="style_high")
     markup.add(btn1, btn2, btn3)
@@ -66,7 +66,7 @@ def process_style(call):
         return
 
     file_info = user_data[user_id]
-    bot.edit_message_text("⏳ جاري المعالجة... انتظر قليلاً", call.message.chat.id, call.message.message_id)
+    bot.edit_message_text("⏳ جاري المعالجة الاحترافية... انتظر قليلاً", call.message.chat.id, call.message.message_id)
     
     if call.data == "style_fpdf":
         run_fpdf_style(call.message, file_info)
@@ -75,7 +75,6 @@ def process_style(call):
     else:
         run_highlight_style(call.message, file_info)
 
-# --- تم استبدال الشكل 1 بالكود الأول المطور ---
 def run_fpdf_style(message, file_info):
     user_id = message.chat.id
     try:
@@ -96,7 +95,7 @@ def run_fpdf_style(message, file_info):
         all_processed_images = []
 
         for page in doc:
-            # معالجة الصور الصافية مع منع التكرار
+            # معالجة الصور
             image_list = page.get_images(full=True)
             for img in image_list:
                 try:
@@ -104,7 +103,6 @@ def run_fpdf_style(message, file_info):
                     if xref in all_processed_images: continue 
                     base_image = doc.extract_image(xref)
                     if base_image["width"] < 150 or base_image["height"] < 150: continue
-
                     img_name = f"tmp_{user_id}_{xref}.{base_image['ext']}"
                     with open(img_name, "wb") as f: f.write(base_image["image"])
                     if pdf_out.get_y() > 200: pdf_out.add_page()
@@ -114,7 +112,7 @@ def run_fpdf_style(message, file_info):
                     os.remove(img_name)
                 except: pass
 
-            # معالجة النصوص (إنجليزي 14، عربي 14.5، عنوان 15)
+            # معالجة النصوص مع فلتر الرموز القوي
             text = page.get_text("text")
             if text.strip():
                 lines = text.split('\n')
@@ -127,16 +125,18 @@ def run_fpdf_style(message, file_info):
                             fixed_ar = fix_arabic(translated)
                             if pdf_out.get_y() > 270: pdf_out.add_page()
 
-                            # حل مشكلة الكراش والرموز
-                            clean_eng = line.replace('“', '"').replace('”', '"').replace('’', "'").replace('‘', "'")
+                            # --- حل مشكلة latin-1 الجذري ---
+                            # تبديل علامات التنصيص الذكية والرموز الغريبة يدوياً
+                            clean_eng = line.replace('“', '"').replace('”', '"').replace('’', "'").replace('‘', "'").replace('–', '-')
+                            # تجاهل أي حرف لا يمكن تحويله لترميز PDF القياسي
                             clean_eng = clean_eng.encode('cp1252', 'ignore').decode('cp1252')
 
-                            # إنجليزي
+                            # إنجليزي: 14 أو 15 للعنوان
                             pdf_out.set_font('Arial', 'B' if is_header else '', 15 if is_header else 14)
                             pdf_out.set_text_color(0, 0, 0)
                             pdf_out.multi_cell(0, 5.5, clean_eng, align='L')
 
-                            # عربي
+                            # عربي: 14.5 أو 15 للعنوان
                             try:
                                 f_style = 'AmiriB' if is_header else 'Amiri'
                                 pdf_out.set_font(f_style, size=15 if is_header else 14.5)
@@ -153,7 +153,6 @@ def run_fpdf_style(message, file_info):
         doc.close()
     except Exception as e: bot.reply_to(message, f"خطأ في الشكل 1: {e}")
 
-# --- الأشكال الأخرى (من الكود الثاني) ---
 def run_inject_style(message, file_info):
     user_id = message.chat.id
     try:
@@ -222,7 +221,7 @@ def run_highlight_style(message, file_info):
 def send_and_clean(message, out, inp):
     if os.path.exists(out):
         with open(out, 'rb') as f:
-            caption_text = f"✅ تم الإنجاز (تستطيع تغير شكل الترجمة)😊🔥\n\n🔗 [اضغط هنا لدخول البوت]({BOT_LINK})"
+            caption_text = f"✅ تم الإنجاز لدفعة أبطال التمريض🔥\n\n🔗 [اضغط هنا لدخول البوت]({BOT_LINK})"
             bot.send_document(message.chat.id, f, caption=caption_text, parse_mode="Markdown")
         os.remove(out)
     if os.path.exists(inp): os.remove(inp)
