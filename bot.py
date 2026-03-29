@@ -5,7 +5,7 @@ import os
 import arabic_reshaper
 from bidi.algorithm import get_display
 
-# --- الإعدادات ---
+# --- الإعدادات الأساسية ---
 API_TOKEN = '7924093069:AAGjjy7SomYnfUWSWu1xGY337aIYzT42tCA'
 CHANNEL_USERNAME = '@W_S_B52' 
 
@@ -35,13 +35,13 @@ def is_subscribed(user_id):
 def send_and_clean(message, out_path, in_path):
     """إرسال الملف المترجم وحذف النسخ المؤقتة"""
     with open(out_path, 'rb') as f:
-        bot.send_document(message.chat.id, f, caption=f"✅ تم الترتيب بنجاح لدفعة التمريض🔥")
+        bot.send_document(message.chat.id, f, caption=f"✅ تم الترتيب المتسلسل بنجاح لدفعة التمريض🔥")
     if os.path.exists(out_path): os.remove(out_path)
     if os.path.exists(in_path): os.remove(in_path)
 
 # --- دالة الترجمة الذكية (حل مشكلة اختفاء الترجمة) ---
 def get_safe_translation(text, target_lang='ar'):
-    """دالة ذكية لاستخدام deep_translator مع التعامل مع الأخطاء"""
+    """دالة ذكية لاستخدام deep_translator مع التعامل مع الفقرات الطويلة"""
     if not text: return ""
     try:
         # إذا كان النص طويلاً جداً (أكثر من 400 حرف)، نقسمه لضمان نجاح الترجمة
@@ -58,14 +58,14 @@ def get_safe_translation(text, target_lang='ar'):
         print(f"Error in translation: {e}")
         return f"[Translation Error] - {text}" # إظهار النص الأصلي عند الخطأ حتى لا تختفي
 
-# --- الشكل الرابع: الترتيب المتسلسل الواضح والضخم ---
+# --- الشكل الرابع المطور: نظام الترتيب العمودي المتسلسل ---
 def run_professional_style(message, file_info):
     user_id = message.chat.id
     try:
         file_path = bot.get_file(file_info['file_id']).file_path
         downloaded = bot.download_file(file_path)
         input_pdf = f"in_{user_id}.pdf"
-        output_pdf = f"Ordered_{file_info['file_name']}"
+        output_pdf = f"Final_Ordered_{file_info['file_name']}"
         
         with open(input_pdf, 'wb') as f: 
             f.write(downloaded)
@@ -74,45 +74,56 @@ def run_professional_style(message, file_info):
         font_path = "Amiri.ttf" # لازم يكون ملف الخط موجود بجانب الكود
         
         for page in doc:
-            # ترتيب النصوص من الأعلى للأسفل
+            # الحصول على كل النصوص في الصفحة مرتبة من الأعلى للأسفل
             text_blocks = page.get_text("blocks")
-            text_blocks.sort(key=lambda b: b[1])
+            text_blocks.sort(key=lambda b: b[1]) # ترتيب حسب الارتفاع (Y)
             
-            # مسح الصفحة لضمان عدم التداخل
+            # مسح الصفحة بالكامل لضمان النظافة
             page.draw_rect(page.rect, color=(1, 1, 1), fill=(1, 1, 1))
             
-            y_cursor = 50 
+            current_y = 50 # نقطة البداية من أعلى الصفحة
             margin = 40
+            line_height = 28
 
             for block in text_blocks:
                 txt = block[4].strip()
+                # ترجمة فقط للنصوص الإنكليزية المناسبة
                 if len(txt) > 2 and not contains_arabic(txt):
                     try:
                         # استخدام دالة الترجمة الذكية الجديدة
                         translated = get_safe_translation(txt)
                         ar_text = fix_arabic(translated)
                         
-                        # تمييز العناوين والخطوات (مثل ملازم التمريض)
-                        is_header = any(k in txt.upper() for k in ["NURSING", "RISK", "CARE", "DIAGNOSIS", "DIABETIC"])
-                        
-                        f_size = 14 if is_header else 12 # تكبير حجم الخط لضمان الوضوح
-                        line_spacing = 35 if is_header else 28
+                        # تمييز العناوين والخطوات (Nursing Interventions, Wound Care, etc)
+                        is_header = any(k in txt.upper() for k in ["NURSING", "RISK", "DIABETIC", "CARE", "DIAGNOSIS"])
+                        is_step = txt[0].isdigit() and ('.' in txt[:3])
+
+                        # تكبير حجم الخط (14 للعنوان و12 للنص) لضمان الوضوح
+                        f_size = 14 if is_header else 12
                         
                         if is_header:
-                            # رسم مستطيل تظليل للعنوان
-                            page.draw_rect(fitz.Rect(margin-5, y_cursor-5, page.rect.width-margin+5, y_cursor+28), 
-                                           color=(0.93, 0.93, 0.93), fill=(0.93, 0.93, 0.93))
+                            # رسم خلفية تظليل للعنوان (هايلايت)
+                            header_rect = fitz.Rect(margin-10, current_y-5, page.rect.width-margin+10, current_y+25)
+                            page.draw_rect(header_rect, color=(0.95, 0.95, 0.95), fill=(0.95, 0.95, 0.95))
+                            txt_color = (0, 0, 0)
+                            ar_color = (0.6, 0.1, 0.1) # أحمر غامق للعربي
+                        elif is_step:
+                            txt_color = (0, 0, 0.7) # أزرق غامق للنقاط
+                            ar_color = (0, 0, 0.7)
+                        else:
+                            txt_color = (0, 0, 0)
+                            ar_color = (0.2, 0.2, 0.2)
 
-                        # كتابة الإنكليزي (يسار)
-                        page.insert_text(fitz.Point(margin, y_cursor + 18), txt, fontsize=f_size, color=(0,0,0))
-                        y_cursor += line_spacing
-                        
-                        # كتابة العربي تحته مباشرة (يمين) - بألوان تمريضية هادئة
-                        page.insert_text(fitz.Point(page.rect.width - margin, y_cursor), 
+                        # 1. طباعة النص الإنكليزي (يسار)
+                        page.insert_text(fitz.Point(margin, current_y + 15), txt, fontsize=f_size, color=txt_color)
+                        current_y += line_height
+
+                        # 2. طباعة النص العربي تحته مباشرة (يمين)
+                        page.insert_text(fitz.Point(page.rect.width - margin, current_y), 
                                          ar_text, fontsize=f_size, fontname="f0", fontfile=font_path, 
-                                         color=(0.5, 0, 0) if is_header else (0.1, 0.1, 0.1), align=2)
+                                         color=ar_color, align=2)
 
-                        y_cursor += line_spacing + 12
+                        y_cursor += line_spacing + 12 # مسافة أمان للسطر القادم
                         if y_cursor > page.rect.height - 70: break 
                     except: continue
 
@@ -127,7 +138,7 @@ def run_professional_style(message, file_info):
 
 @bot.message_handler(commands=['start'])
 def start(message):
-    bot.reply_to(message, f"أهلاً وسام! أرسل ملف PDF للبدء بالترجمة.\nقناتنا: {CHANNEL_USERNAME}")
+    bot.reply_to(message, f"أهلاً وسام! أرسل ملف PDF للبدء بالترجمة بالشكل الاحترافي المطور.\nقناتنا: {CHANNEL_USERNAME}")
 
 @bot.message_handler(content_types=['document'])
 def handle_docs(message):
@@ -142,12 +153,12 @@ def handle_docs(message):
     user_data[message.from_user.id] = {'file_id': message.document.file_id, 'file_name': message.document.file_name}
     
     markup = telebot.types.InlineKeyboardMarkup()
-    markup.add(telebot.types.InlineKeyboardButton("الشكل 4: الترتيب المتسلسل (النسخة الواضحة) ✅", callback_data="run_pro"))
+    markup.add(telebot.types.InlineKeyboardButton("تشغيل الشكل 4 المطور 🚀", callback_data="run_pro"))
     bot.reply_to(message, "اختار التنسيق المطلوب لدفعة التمريض:", reply_markup=markup)
 
 @bot.callback_query_handler(func=lambda call: call.data == "run_pro")
 def execute_style(call):
-    bot.edit_message_text("⏳ جاري المعالجة وترجمة الفقرات... انتظر قليلاً", call.message.chat.id, call.message.message_id)
+    bot.edit_message_text("⏳ جاري تنظيف الصفحة وترجمة الفقرات بالتسلسل...", call.message.chat.id, call.message.message_id)
     run_professional_style(call.message, user_data[call.from_user.id])
 
 bot.polling()
