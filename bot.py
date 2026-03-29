@@ -6,8 +6,8 @@ import os
 import arabic_reshaper
 from bidi.algorithm import get_display
 
-# --- الإعدادات ---
-API_TOKEN = '7924093069:AAGjjy7SomYnfUWSWu1xGY337aIY<G337aIYzT42tCA'
+# --- الإعدادات (تأكد من الـ Token الصحيح) ---
+API_TOKEN = '7924093069:AAGjjy7SomYnfUWSWu1xGY337aIYzT42tCA'
 CHANNEL_USERNAME = '@W_S_B52' 
 BOT_LINK = 'https://t.me/WSM_bot' 
 
@@ -28,7 +28,7 @@ def is_subscribed(user_id):
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
     user_name = message.from_user.first_name 
-    bot.reply_to(message, f"أهلاً {user_name}! أرسل ملف PDF للترجمة المكثفة بدون فراغات.\nقناتنا: {CHANNEL_USERNAME}")
+    bot.reply_to(message, f"أهلاً {user_name}! أرسل ملف PDF للترجمة المكثفة (بدون فراغات).\nقناتنا: {CHANNEL_USERNAME}")
 
 @bot.message_handler(content_types=['document'])
 def handle_docs(message):
@@ -62,14 +62,16 @@ def process_style(call):
         return
 
     file_info = user_data[user_id]
-    bot.edit_message_text("⏳ جاري المعالجة وتقليل الفراغات... انتظر قليلاً", call.message.chat.id, call.message.message_id)
+    bot.edit_message_text("⏳ جاري المعالجة المكثفة... انتظر قليلاً", call.message.chat.id, call.message.message_id)
     
     if call.data == "style_fpdf":
         run_fpdf_style(call.message, file_info)
     elif call.data == "style_inject":
-        run_inject_style(call.message, file_info)
+        # هنا تضع كود الشكل الثاني الذي تملكه
+        pass
     else:
-        run_highlight_style(call.message, file_info)
+        # هنا تضع كود الشكل الثالث الذي تملكه
+        pass
 
 def run_fpdf_style(message, file_info):
     user_id = message.chat.id
@@ -90,6 +92,7 @@ def run_fpdf_style(message, file_info):
         for page in doc:
             pdf_out.add_page()
             
+            # استخراج الصور الصافية
             processed_images = []
             for img in page.get_images(full=True):
                 try:
@@ -103,11 +106,12 @@ def run_fpdf_style(message, file_info):
                     
                     if pdf_out.get_y() > 200: pdf_out.add_page()
                     pdf_out.image(img_name, x=45, w=100) 
-                    pdf_out.ln(2) # فراغ بسيط جداً بعد الصورة
+                    pdf_out.ln(2) 
                     processed_images.append(xref)
                     os.remove(img_name)
                 except: pass
 
+            # النصوص بدون فراغات
             text = page.get_text("text")
             if text.strip():
                 lines = text.split('\n')
@@ -119,25 +123,23 @@ def run_fpdf_style(message, file_info):
                             translated = GoogleTranslator(source='en', target='ar').translate(line)
                             fixed_ar = fix_arabic(translated)
                             
-                            # رفع حد الصفحة لتقليل الفراغ السفلي
                             if pdf_out.get_y() > 275: pdf_out.add_page()
                             
-                            # النص الإنجليزي (تم تقليل المسافة العمودية لـ 5.5)
+                            # إنجليزي (سميك للعنوان) - مسافة 5.5
                             pdf_out.set_font('Arial', 'B' if is_header else '', 15.5 if is_header else 14)
                             pdf_out.set_text_color(0, 0, 0)
                             pdf_out.multi_cell(0, 5.5, line.encode('latin-1', 'ignore').decode('latin-1'), align='L')
                             
-                            # النص العربي (تم تقليل المسافة العمودية لـ 5.5)
+                            # عربي (سميك للعنوان) - مسافة 5.5
                             try:
-                                font_s = 'AmiriB' if is_header else 'Amiri'
-                                pdf_out.set_font(font_s, size=15.5 if is_header else 15)
+                                f_style = 'AmiriB' if is_header else 'Amiri'
+                                pdf_out.set_font(f_style, size=15.5 if is_header else 15)
                             except:
                                 pdf_out.set_font('Arial', size=15)
                                 
                             pdf_out.set_text_color(220, 20, 60) if is_header else pdf_out.set_text_color(50, 50, 50)
                             pdf_out.multi_cell(0, 5.5, fixed_ar, align='R')
                             
-                            # فراغ شبه معدوم بين الفقرات
                             pdf_out.ln(0.5) 
                         except: continue
         
@@ -145,14 +147,6 @@ def run_fpdf_style(message, file_info):
         send_and_clean(message, output_pdf, input_pdf)
         doc.close()
     except Exception as e: bot.reply_to(message, f"خطأ: {e}")
-
-def run_inject_style(message, file_info):
-    # الكود الخاص بالشكل الثاني (بدون تغيير)
-    pass 
-
-def run_highlight_style(message, file_info):
-    # الكود الخاص بالشكل الثالث (بدون تغيير)
-    pass 
 
 def send_and_clean(message, out, inp):
     if os.path.exists(out):
