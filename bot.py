@@ -50,12 +50,12 @@ def handle_docs(message):
     user_data[user_id] = {'file_id': message.document.file_id, 'file_name': message.document.file_name}
     
     markup = telebot.types.InlineKeyboardMarkup(row_width=1)
-    btn1 = telebot.types.InlineKeyboardButton("1️⃣ شكل كلاسيك (صور صافية + أحجام معدلة)", callback_data="style_fpdf")
-    btn2 = telebot.types.InlineKeyboardButton("2️⃣ شكل الحقن (خط ناعم)", callback_data="style_inject")
-    btn3 = telebot.types.InlineKeyboardButton("3️⃣ شكل الهايلايت (منسق)", callback_data="style_high")
+    btn1 = telebot.types.InlineKeyboardButton("1️⃣ شكل كلاسيك (صور صافية + سميك)", callback_data="style_fpdf")
+    btn2 = telebot.types.InlineKeyboardButton("2️⃣ شكل الحقن (بدون تغيير)", callback_data="style_inject")
+    btn3 = telebot.types.InlineKeyboardButton("3️⃣ شكل الهايلايت (بدون تغيير)", callback_data="style_high")
     markup.add(btn1, btn2, btn3)
     
-    bot.reply_to(message, "اختار نوع التنسيق المطلوب:", reply_markup=markup)
+    bot.reply_to(message, "اختار نوع التنسيق المطلوب لدفعة التمريض:", reply_markup=markup)
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('style_'))
 def process_style(call):
@@ -74,7 +74,7 @@ def process_style(call):
     else:
         run_highlight_style(call.message, file_info)
 
-# --- الشكل 1: دمج الصور الصافية مع تنسيق الخطوط المخصص ---
+# --- الشكل 1 المعدل: عناوين سميكة + فراغات أقل ---
 def run_fpdf_style(message, file_info):
     user_id = message.chat.id
     try:
@@ -94,27 +94,24 @@ def run_fpdf_style(message, file_info):
         for page in doc:
             pdf_out.add_page()
             
-            # 1. استخراج الصور الصافية (بفلتر الحجم وعدم التكرار)
             processed_images = []
             for img in page.get_images(full=True):
                 try:
                     xref = img[0]
                     if xref in processed_images: continue
                     base_image = doc.extract_image(xref)
-                    # تجاهل اللوغوات الصغيرة (أقل من 150 بكسل) كما في الكود الأول
                     if base_image["width"] < 150 or base_image["height"] < 150: continue
 
                     img_name = f"tmp_{user_id}_{xref}.{base_image['ext']}"
                     with open(img_name, "wb") as f: f.write(base_image["image"])
                     
                     if pdf_out.get_y() > 190: pdf_out.add_page()
-                    pdf_out.image(img_name, x=40, w=110) # الحجم المثالي
-                    pdf_out.ln(5)
+                    pdf_out.image(img_name, x=40, w=110) 
+                    pdf_out.ln(3) # تقليل الفراغ بعد الصورة
                     processed_images.append(xref)
                     os.remove(img_name)
                 except: pass
 
-            # 2. ترجمة النصوص بالأحجام المحددة
             text = page.get_text("text")
             if text.strip():
                 lines = text.split('\n')
@@ -122,18 +119,28 @@ def run_fpdf_style(message, file_info):
                     line = line.strip()
                     if len(line) > 3:
                         try:
+                            # الكشف عن العناوين (Bold)
                             is_header = line.isupper() and len(line) < 60
+                            
                             translated = GoogleTranslator(source='en', target='ar').translate(line)
                             fixed_ar = fix_arabic(translated)
                             
-                            if pdf_out.get_y() > 250: pdf_out.add_page()
+                            if pdf_out.get_y() > 260: pdf_out.add_page() # زيادة استغلال الصفحة
                             
-                            # تنسيق النص الإنجليزي (14 أو 15.5 ثخين للعنوان)
-                            pdf_out.set_font('Arial', 'B' if is_header else '', 15.5 if is_header else 14)
+                            # تنسيق النص الإنجليزي (14 / عنوان 15.5 ثخين)
+                            # تثبيت Arial Bold للعناوين لضمان السمك
+                            font_eng = 'Arial'
+                            if is_header:
+                                pdf_out.set_font(font_eng, 'B', 15.5)
+                            else:
+                                pdf_out.set_font(font_eng, '', 14)
+                                
                             pdf_out.set_text_color(0, 0, 0)
-                            pdf_out.multi_cell(0, 8, line.encode('latin-1', 'ignore').decode('latin-1'), align='L')
+                            # تقليل المسافة العمودية (البارامتر الثاني) من 8 إلى 7
+                            pdf_out.multi_cell(0, 7, line.encode('latin-1', 'ignore').decode('latin-1'), align='L')
                             
-                            # تنسيق النص العربي (15 أو 15.5 ثخين للعنوان)
+                            # تنسيق النص العربي (15 / عنوان 15.5 ثخين)
+                            # تثبيت Amiri Bold للعناوين لضمان السمك
                             try:
                                 font_style = 'AmiriB' if is_header else 'Amiri'
                                 pdf_out.set_font(font_style, size=15.5 if is_header else 15)
@@ -141,8 +148,11 @@ def run_fpdf_style(message, file_info):
                                 pdf_out.set_font('Arial', size=15)
                                 
                             pdf_out.set_text_color(220, 20, 60) if is_header else pdf_out.set_text_color(60, 60, 60)
-                            pdf_out.multi_cell(0, 8, fixed_ar, align='R')
-                            pdf_out.ln(2)
+                            # تقليل المسافة العمودية (البارامتر الثاني) من 8 إلى 7
+                            pdf_out.multi_cell(0, 7, fixed_ar, align='R')
+                            
+                            # تقليل الفراغ بين الفقرات من 2 إلى 1.5
+                            pdf_out.ln(1.5) 
                         except: continue
         
         pdf_out.output(output_pdf)
@@ -150,7 +160,7 @@ def run_fpdf_style(message, file_info):
         doc.close()
     except Exception as e: bot.reply_to(message, f"خطأ في الشكل 1: {e}")
 
-# --- الأشكال الأخرى (بدون أي تغيير) ---
+# --- باقي الأشكال ستبقى كما هي بناءً على طلبك ---
 def run_inject_style(message, file_info):
     user_id = message.chat.id
     try:
