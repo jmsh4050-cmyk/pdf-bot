@@ -1,119 +1,59 @@
-import telebot
-import fitz  # PyMuPDF
-from deep_translator import GoogleTranslator
-import os
-import arabic_reshaper
-from bidi.algorithm import get_display
-
-# --- الإعدادات ---
-API_TOKEN = '7924093069:AAGjjy7SomYnfUWSWu1xGY337aIYzT42tCA'
-CHANNEL_USERNAME = '@W_S_B52' 
-
-bot = telebot.TeleBot(API_TOKEN)
-user_data = {}
-
-def fix_arabic(text):
-    if not text: return ""
-    reshaped_text = arabic_reshaper.reshape(text)
-    return get_display(reshaped_text)
-
-def is_subscribed(user_id):
-    try:
-        status = bot.get_chat_member(CHANNEL_USERNAME, user_id).status
-        return status in ['member', 'administrator', 'creator']
-    except: return False
-
-# --- دالة الشكل الرابع (النسخة الضخمة والواضحة) ---
-def run_professional_style(message, file_info):
+def run_flashcard_style(message, file_info):
     user_id = message.chat.id
     try:
         file_path = bot.get_file(file_info['file_id']).file_path
         downloaded = bot.download_file(file_path)
         input_pdf = f"in_{user_id}.pdf"
-        output_pdf = f"Final_Style_{file_info['file_name']}"
+        output_pdf = f"Nursing_Cards_{file_info['file_name']}"
         with open(input_pdf, 'wb') as f: f.write(downloaded)
 
         doc = fitz.open(input_pdf)
-        font_path = "Amiri.ttf" # تأكد من وجود الملف بجانب الكود
+        font_path = "Amiri.ttf"
         
         for page in doc:
             blocks = page.get_text("blocks")
-            blocks.sort(key=lambda b: b[1]) # ترتيب من الأعلى للأسفل
+            blocks.sort(key=lambda b: b[1]) # الترتيب من الأعلى للأسفل
             
-            # مسح الصفحة بالكامل لضمان النظافة
+            # مسح الصفحة بالكامل
             page.draw_rect(page.rect, color=(1, 1, 1), fill=(1, 1, 1))
             
-            y_cursor = 50 
-            margin = 40
+            y_pos = 40
+            margin = 30
+            page_width = page.rect.width
 
             for block in blocks:
                 txt = block[4].strip()
-                if len(txt) > 2:
+                if len(txt) > 2 and not contains_arabic(txt):
                     try:
-                        # الترجمة الفورية
                         translated = GoogleTranslator(source='en', target='ar').translate(txt)
-                        ar_text = fix_arabic(translated)
+                        ar_txt = fix_arabic(translated)
                         
-                        # تحديد نوع السطر (عنوان أو نقطة أو نص عادي)
-                        is_header = any(k in txt.upper() for k in ["NURSING", "RISK", "DIABETIC", "CARE", "DIAGNOSIS", "RELATED"])
-                        is_step = txt[0].isdigit() and ('.' in txt[:3])
-
-                        # ضبط حجم الخط (تكبير بناءً على طلبك)
-                        font_size = 14 if is_header else 12
-                        line_spacing = 30 if is_header else 25
-
-                        if is_header:
-                            # رسم مستطيل تظليل للعنوان (مثل الصورة اللي دزيتها)
-                            page.draw_rect(fitz.Rect(margin-10, y_cursor-5, page.rect.width-margin+10, y_cursor+line_spacing), 
-                                           color=(0.9, 0.9, 0.9), fill=(0.9, 0.9, 0.9))
-                            txt_color = (0, 0, 0)
-                            ar_color = (0.7, 0, 0) # أحمر غامق للعنوان العربي
-                        elif is_step:
-                            txt_color = (0, 0, 0.7) # أزرق للنقاط
-                            ar_color = (0, 0, 0.7)
-                        else:
-                            txt_color = (0, 0, 0)
-                            ar_color = (0.2, 0.2, 0.2)
-
-                        # كتابة الإنكليزي (يسار)
-                        page.insert_text(fitz.Point(margin, y_cursor + 15), txt, fontsize=font_size, color=txt_color)
+                        # تحديد الارتفاع المطلوب للبطاقة بناءً على طول النص
+                        card_height = 45 if len(txt) < 50 else 70
                         
-                        # كتابة العربي (يمين - بنفس السطر أو تحته بمسافة بسيطة لضمان الوضوح)
-                        y_cursor += line_spacing
-                        page.insert_text(fitz.Point(page.rect.width - margin, y_cursor), 
-                                         ar_text, fontsize=font_size, fontname="f0", fontfile=font_path, 
-                                         color=ar_color, align=2)
-
-                        y_cursor += line_spacing + 5 # مسافة أمان للسطر القادم
+                        # رسم إطار البطاقة (Card)
+                        card_rect = fitz.Rect(margin, y_pos, page_width - margin, y_pos + card_height)
+                        page.draw_rect(card_rect, color=(0.8, 0.8, 0.8), width=0.5) # إطار خفيف
                         
-                        if y_cursor > page.rect.height - 60: break 
+                        # إذا كان عنوان، نلون البطاقة
+                        if any(k in txt.upper() for k in ["NURSING", "CARE", "DIAGNOSIS"]):
+                            page.draw_rect(card_rect, color=(0.9, 0.9, 1), fill=(0.9, 0.9, 1))
+
+                        # كتابة النص الإنكليزي (يسار)
+                        page.insert_textbox(fitz.Rect(margin + 5, y_pos + 5, (page_width/2) - 5, y_pos + card_height - 5),
+                                            txt, fontsize=12, color=(0,0,0), align=0)
+                        
+                        # كتابة النص العربي (يمين)
+                        page.insert_textbox(fitz.Rect((page_width/2) + 5, y_pos + 5, page_width - margin - 5, y_pos + card_height - 5),
+                                            ar_txt, fontsize=12, fontname="f0", fontfile=font_path, color=(0,0,0), align=2)
+
+                        y_pos += card_height + 10 # مسافة بين البطاقات
+                        
+                        if y_pos > page.rect.height - 50: break
                     except: continue
 
         doc.save(output_pdf)
         doc.close()
-        
-        with open(output_pdf, 'rb') as f:
-            bot.send_document(message.chat.id, f, caption="✅ تم التعديل: تكبير الخط + وضوح الترجمة.")
-        
-        os.remove(input_pdf)
-        os.remove(output_pdf)
-
+        send_and_clean(message, output_pdf, input_pdf)
     except Exception as e:
-        bot.reply_to(message, f"خطأ: {str(e)}")
-
-# --- المحركات (Handlers) ---
-@bot.message_handler(content_types=['document'])
-def handle_pdf(message):
-    if not is_subscribed(message.from_user.id):
-        bot.reply_to(message, "اشترك أولاً.") ; return
-    user_data[message.from_user.id] = {'file_id': message.document.file_id, 'file_name': message.document.file_name}
-    markup = telebot.types.InlineKeyboardMarkup()
-    markup.add(telebot.types.InlineKeyboardButton("تشغيل الشكل 4 المطور 🚀", callback_data="run"))
-    bot.reply_to(message, "تم الاستلام. اضغط للترجمة بخط كبير:", reply_markup=markup)
-
-@bot.callback_query_handler(func=lambda call: call.data == "run")
-def start_pro(call):
-    bot.edit_message_text("⏳ جاري المعالجة (النسخة الواضحة)...", call.message.chat.id, call.message.message_id)
-    run_professional_style(call.message, user_data[call.from_user.id])
-
-bot.polling()
+        bot.reply_to(message, f"خطأ في شكل البطاقات: {e}")
