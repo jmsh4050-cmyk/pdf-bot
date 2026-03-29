@@ -50,12 +50,12 @@ def handle_docs(message):
     user_data[user_id] = {'file_id': message.document.file_id, 'file_name': message.document.file_name}
     
     markup = telebot.types.InlineKeyboardMarkup()
-    btn1 = telebot.types.InlineKeyboardButton("1️⃣ الشكل الكلاسيكي (بدون كراش 🛡️)", callback_data="style_fpdf")
+    btn1 = telebot.types.InlineKeyboardButton("1️⃣ الشكل الكلاسيكي (🌝)", callback_data="style_fpdf")
     btn2 = telebot.types.InlineKeyboardButton("2️⃣ شكل الحقن", callback_data="style_inject")
     btn3 = telebot.types.InlineKeyboardButton("3️⃣ شكل الهايلايت", callback_data="style_high")
     markup.add(btn1, btn2, btn3)
     
-    bot.reply_to(message, "اختار نوع التنسيق المطور😊:", reply_markup=markup)
+    bot.reply_to(message, "اختار نوع التنسيق حسب ماتحب😊:", reply_markup=markup)
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('style_'))
 def process_style(call):
@@ -201,7 +201,7 @@ def run_highlight_style(message, file_info):
 def send_and_clean(message, out, inp):
     if os.path.exists(out):
         with open(out, 'rb') as f:
-            caption_text = f"✅ تم الإنجاز لدفعة التمريض🔥\n🔗 [دخول البوت]({BOT_LINK})"
+            caption_text = f"✅تم الإنجاز(تستطيع تغير شكل الترجمة)🔥\n🔗 [دخول البوت]({BOT_LINK})"
             bot.send_document(message.chat.id, f, caption=caption_text, parse_mode="Markdown")
         os.remove(out)
     if os.path.exists(inp): os.remove(inp)
