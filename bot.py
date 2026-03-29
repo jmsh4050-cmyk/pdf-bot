@@ -52,7 +52,7 @@ def handle_docs(message):
     btn1 = telebot.types.InlineKeyboardButton("1️⃣ شكل كلاسيك (ملف جديد)", callback_data="style_fpdf")
     btn2 = telebot.types.InlineKeyboardButton("2️⃣ شكل الحقن (تصغير وصافي)", callback_data="style_inject")
     btn3 = telebot.types.InlineKeyboardButton("3️⃣ شكل الهايلايت (بدون تداخل)", callback_data="style_high")
-    btn4 = telebot.types.InlineKeyboardButton("4️⃣ شكل احترافي (أعمدة + تظليل عناوين)", callback_data="style_pro")
+    btn4 = telebot.types.InlineKeyboardButton("4️⃣ شكل احترافي (أعمدة + تظليل عناوين - مصحح)", callback_data="style_pro")
     markup.add(btn1, btn2)
     markup.add(btn3)
     markup.add(btn4)
@@ -69,25 +69,24 @@ def process_style(call):
         return
 
     file_info = user_data[user_id]
-    bot.edit_message_text("⏳ جاري المعالجة بدقة عالية... انتظر قليلاً", call.message.chat.id, call.message.message_id)
+    bot.edit_message_text("⏳ جاري المعالجة بدقة عالية لدفعة التمريض... انتظر قليلاً", call.message.chat.id, call.message.message_id)
     
     if style == "style_fpdf": run_fpdf_style(call.message, file_info)
     elif style == "style_inject": run_inject_style(call.message, file_info)
     elif style == "style_high": run_highlight_style(call.message, file_info)
     else: run_professional_style(call.message, file_info)
 
-# --- الدوال الخاصة بالأشكال 1 و 2 و 3 (كما كانت سابقاً) ---
-# [يمكنك نسخ الدوال run_fpdf_style, run_inject_style, run_highlight_style من الكود السابق ولصقها هنا]
+# --- الدوال القديمة (run_fpdf_style, run_inject_style, run_highlight_style) تُنسخ هنا دون تعديل ---
 # ... [الدوال القديمة] ...
 
-# --- [الشكل 4: الشكل الاحترافي (أعمدة + تظليل عناوين) - الجديد] ---
+# --- [الشكل 4 الاحترافي (المصحح)] ---
 def run_professional_style(message, file_info):
     user_id = message.chat.id
     try:
         file_path = bot.get_file(file_info['file_id']).file_path
         downloaded = bot.download_file(file_path)
         input_pdf = f"in_{user_id}.pdf"
-        output_pdf = f"Professional_{file_info['file_name']}"
+        output_pdf = f"Style4_Clean_{file_info['file_name']}"
         with open(input_pdf, 'wb') as f: f.write(downloaded)
 
         doc = fitz.open(input_pdf)
@@ -95,6 +94,13 @@ def run_professional_style(message, file_info):
         
         for page in doc:
             dict_text = page.get_text("dict")
+            # --- 1. مسح النص الأصلي بالكامل أولاً لضمان النظافة ---
+            text_blocks = page.get_text("blocks")
+            for block in text_blocks:
+                # مسح فقط نصوص الإنكليزي
+                if not contains_arabic(block[4]) and len(block[4].strip()) > 2:
+                    page.draw_rect(block[:4], color=(1, 1, 1), fill=(1, 1, 1))
+
             for block in dict_text["blocks"]:
                 if "lines" in block:
                     for line in block["lines"]:
@@ -102,56 +108,55 @@ def run_professional_style(message, file_info):
                             txt = span["text"].strip()
                             if len(txt) > 2 and not contains_arabic(txt):
                                 try:
-                                    rect = span["bbox"] # [x0, y0, x1, y1]
+                                    rect = span["bbox"] # إحداثيات النص الأصلي
                                     page_width = page.rect.width
-                                    page_height = page.rect.height
-                                    column_width = page_width / 2.2 # تقسيم الصفحة لعمودين
+                                    
+                                    # --- 2. تحديد أنظف للأعمدة ---
+                                    column_width = page_width / 2.5 # جعل الأعمدة أصغر شوية
+                                    gap = 20 # فراغ أمان بين العمودين
 
-                                    # ترجمة العربي
+                                    # --- 3. ترجمة العربي ---
                                     trans = GoogleTranslator(source='en', target='ar').translate(txt)
                                     fixed_ar = fix_arabic(trans)
                                     
-                                    # تحديد إذا كانت الجملة عنواناً رئيسياً (Nursing, Care, Diagnosis, Risk)
+                                    # تحديد تنسيقات العناوين
                                     is_main_header = any(keyword in txt for keyword in ["Nursing", "Care", "Diagnosis", "Risk", "Wound", "Related"])
-                                    # تحديد النقاط الفرعية (1. , 2. , ...)
                                     is_sub_header = txt[0].isdigit() and txt[1] == '.' if len(txt) > 1 else False
 
-                                    # --- 1. مسح النص الأصلي تماماً ---
-                                    page.draw_rect(rect, color=(1, 1, 1), fill=(1, 1, 1))
-                                    
-                                    # --- 2. رسم خلفية رمادية للعناوين الرئيسية (هايلايت) ---
-                                    if is_main_header:
-                                        page.draw_rect(rect, color=(0.94, 0.94, 0.94), fill=(0.94, 0.94, 0.94))
-                                    
-                                    # --- 3. تحديد تنسيقات الخطوط (الحجم واللون) ---
-                                    eng_font_size = span["size"]
-                                    ar_font_size = span["size"] * 0.85 # العربي أصغر قليلاً
+                                    # --- 4. تخطيط مساحة الكتابة النظيفة (التصحيح الرئيسي) ---
+                                    # نستخدم Multi-cell لتوزيع النص، ولكن نترك مساحة أكبر شوية
+                                    eng_sz = span["size"] * 0.90
+                                    ar_sz = span["size"] * 0.75 # العربي أصغر قليلاً
 
                                     if is_main_header:
-                                        eng_color = (0, 0, 0) # أسود للعنوان الرئيسي
-                                        ar_color = (0.6, 0.1, 0.1) # أحمر غامق للعربي المقابل
+                                        # تظليل رمادي للعناوين الرئيسية
+                                        header_rect = fitz.Rect(rect[0], rect[1]-1, page_width, rect[3]+1)
+                                        page.draw_rect(header_rect, color=(0.95, 0.95, 0.95), fill=(0.95, 0.95, 0.95))
+                                        eng_color = (0, 0, 0) # أسود للإنكليزي
+                                        ar_color = (0.6, 0.1, 0.1) # أحمر غامق للعربي
                                     elif is_sub_header:
                                         eng_color = (0, 0, 0.5) # أزرق غامق للنقاط
                                         ar_color = (0, 0, 0.5)
                                     else:
                                         eng_color = (0, 0, 0) # أسود للنص العادي
-                                        ar_color = (0.2, 0.2, 0.2) # رمادي غامق للعربي العادي
+                                        ar_color = (0.2, 0.2, 0.2) # رمادي غامق للعربي
 
-                                    # --- 4. حقن النص الإنكليزي (العمود الأيسر) ---
-                                    # نستخدم Multi-cell لتوزيع النص داخل العمود
+                                    # --- 5. حقن النص الإنكليزي (العمود الأيسر) ---
+                                    eng_frame = fitz.Rect(rect[0], rect[1], column_width, rect[3])
                                     page.insert_textbox(
-                                        fitz.Rect(rect[0], rect[1], column_width, rect[3]),
+                                        eng_frame,
                                         txt,
-                                        fontsize=eng_font_size,
+                                        fontsize=eng_sz,
                                         color=eng_color,
                                         align=fitz.TEXT_ALIGN_LEFT
                                     )
                                     
-                                    # --- 5. حقن النص العربي (العمود الأيمن) ---
+                                    # --- 6. حقن النص العربي (العمود الأيمن) مع ترك gap ---
+                                    ar_frame = fitz.Rect(column_width + gap, rect[1], page_width - gap, rect[3])
                                     page.insert_textbox(
-                                        fitz.Rect(page_width - column_width, rect[1], column_width - rect[0], rect[3]),
+                                        ar_frame,
                                         fixed_ar,
-                                        fontsize=ar_font_size,
+                                        fontsize=ar_sz,
                                         fontname="f0", 
                                         fontfile=font_path,
                                         color=ar_color,
@@ -164,14 +169,10 @@ def run_professional_style(message, file_info):
         doc.close()
         send_and_clean(message, output_pdf, input_pdf)
     except Exception as e: 
-        bot.reply_to(message, f"خطأ في الشكل الاحترافي: {str(e)}")
+        bot.reply_to(message, f"خطأ في الشكل الاحترافي المصحح: {str(e)}\nتأكد من وجود ملف Amiri.ttf")
 
-# --- دالة الإرسال والتنظيف (كما كانت سابقاً) ---
-def send_and_clean(message, out, inp):
-    with open(out, 'rb') as f:
-        bot.send_document(message.chat.id, f, caption=f"✅ تم الإنجاز بدقة عالية لدفعة أبطال التمريض🔥\nقناتنا: {CHANNEL_USERNAME}")
-    if os.path.exists(out): os.remove(out)
-    if os.path.exists(inp): os.remove(inp)
+# --- دالة الإرسال والتنظيف القديمة تُنسخ هنا دون تعديل ---
+# ... [دالة send_and_clean القديمة] ...
 
 # --- تشغيل البوت ---
 bot.polling()
