@@ -31,7 +31,7 @@ def contains_arabic(text):
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
     user_name = message.from_user.first_name 
-    bot.reply_to(message, f"أهلاً {user_name}! أرسل ملف PDF واختار شكل الترجمة المفضل لدفعة التمريض.\nقناتنا: {CHANNEL_USERNAME}")
+    bot.reply_to(message, f"أهلاً وسام! أرسل ملف PDF واختار شكل الترجمة المفضل لدفعة التمريض.\nقناتنا: {CHANNEL_USERNAME}")
 
 @bot.message_handler(content_types=['document'])
 def handle_docs(message):
@@ -50,9 +50,9 @@ def handle_docs(message):
     user_data[user_id] = {'file_id': message.document.file_id, 'file_name': message.document.file_name}
     
     markup = telebot.types.InlineKeyboardMarkup()
-    btn1 = telebot.types.InlineKeyboardButton("1️⃣ شكل كلاسيك (دعم الصور + موفر)", callback_data="style_fpdf")
-    btn2 = telebot.types.InlineKeyboardButton("2️⃣ شكل الحقن (خط ناعم)", callback_data="style_inject")
-    btn3 = telebot.types.InlineKeyboardButton("3️⃣ شكل الهايلايت (منسق)", callback_data="style_high")
+    btn1 = telebot.types.InlineKeyboardButton("1️⃣ شكل كلاسيك (يدعم الصور)", callback_data="style_fpdf")
+    btn2 = telebot.types.InlineKeyboardButton("2️⃣ شكل الحقن (بدون تغيير)", callback_data="style_inject")
+    btn3 = telebot.types.InlineKeyboardButton("3️⃣ شكل الهايلايت (بدون تغيير)", callback_data="style_high")
     markup.add(btn1, btn2, btn3)
     
     bot.reply_to(message, "اختار نوع التنسيق المطلوب:")
@@ -65,7 +65,7 @@ def process_style(call):
         return
 
     file_info = user_data[user_id]
-    bot.edit_message_text("⏳ جاري المعالجة ودعم الصور... انتظر قليلاً", call.message.chat.id, call.message.message_id)
+    bot.edit_message_text("⏳ جاري المعالجة وإدراج الصور... انتظر قليلاً", call.message.chat.id, call.message.message_id)
     
     if call.data == "style_fpdf":
         run_fpdf_style(call.message, file_info)
@@ -74,14 +74,14 @@ def process_style(call):
     else:
         run_highlight_style(call.message, file_info)
 
-# --- الشكل 1: دعم الصور + أحجام دقيقة + عروين ثخينة ---
+# --- الشكل 1: التعديل المطلوب (إدراج الصور + الأحجام الجديدة) ---
 def run_fpdf_style(message, file_info):
     user_id = message.chat.id
     try:
         file_path = bot.get_file(file_info['file_id']).file_path
         downloaded = bot.download_file(file_path)
         input_pdf = f"in_{user_id}.pdf"
-        output_pdf = f"Translated_{file_info['file_name']}"
+        output_pdf = f"Style1_{file_info['file_name']}"
         with open(input_pdf, 'wb') as f: f.write(downloaded)
 
         pdf_out = FPDF()
@@ -95,19 +95,20 @@ def run_fpdf_style(message, file_info):
             pdf_out.add_page()
             page = doc[page_index]
             
-            # استخراج الصور وإدراجها
+            # 📸 سحب الصور من الصفحة الأصلية ووضعها في الملف الجديد
             image_list = page.get_images(full=True)
             for img_index, img in enumerate(image_list):
                 try:
                     xref = img[0]
                     base_image = doc.extract_image(xref)
                     image_bytes = base_image["image"]
-                    img_temp = f"img_{user_id}_{page_index}_{img_index}.png"
-                    with open(img_temp, "wb") as f: f.write(image_bytes)
+                    img_name = f"temp_{user_id}_{page_index}_{img_index}.png"
+                    with open(img_name, "wb") as f: f.write(image_bytes)
                     
-                    # وضع الصورة بحد أقصى للعرض لضمان التنسيق
-                    pdf_out.image(img_temp, x=40, w=130)
-                    os.remove(img_temp)
+                    # ضبط حجم الصورة تلقائياً لتناسب الصفحة
+                    pdf_out.image(img_name, x=35, w=140)
+                    pdf_out.ln(5)
+                    os.remove(img_name)
                 except: pass
 
             text = page.get_text("text")
@@ -123,21 +124,21 @@ def run_fpdf_style(message, file_info):
                             translated = GoogleTranslator(source='en', target='ar').translate(line)
                             fixed_ar = fix_arabic(translated)
                             
-                            if pdf_out.get_y() > 255: pdf_out.add_page()
+                            if pdf_out.get_y() > 250: pdf_out.add_page()
                             
-                            # الإنكليزي 14 (أو 15.5 للعناوين)
+                            # نصوص إنكليزية (14 / عنوان 15.5)
                             pdf_out.set_font('Arial', 'B' if is_header else '', 15.5 if is_header else 14)
                             pdf_out.set_text_color(0, 0, 0)
                             pdf_out.multi_cell(0, 8, line.encode('latin-1', 'ignore').decode('latin-1'), align='L')
                             
-                            # العربي 15
+                            # نصوص عربية (15 / عنوان 15.5)
                             try:
-                                font_style = 'AmiriB' if is_header else 'Amiri'
-                                pdf_out.set_font(font_style, size=15.5 if is_header else 15)
+                                font_type = 'AmiriB' if is_header else 'Amiri'
+                                pdf_out.set_font(font_type, size=15.5 if is_header else 15)
                             except:
                                 pdf_out.set_font('Arial', size=15)
-                                
-                            pdf_out.set_text_color(200, 0, 0) if is_header else pdf_out.set_text_color(60, 60, 60)
+                            
+                            pdf_out.set_text_color(220, 20, 60) if is_header else pdf_out.set_text_color(60, 60, 60)
                             pdf_out.multi_cell(0, 8, fixed_ar, align='R')
                             pdf_out.ln(2)
                         except: continue
@@ -147,7 +148,7 @@ def run_fpdf_style(message, file_info):
         doc.close()
     except Exception as e: bot.reply_to(message, f"خطأ في الشكل 1: {e}")
 
-# --- الأشكال 2 و 3 (كما هي دون تغيير) ---
+# --- الأشكال الأخرى (بدون تغيير كما طلبت) ---
 def run_inject_style(message, file_info):
     user_id = message.chat.id
     try:
@@ -216,6 +217,7 @@ def run_highlight_style(message, file_info):
 def send_and_clean(message, out, inp):
     if os.path.exists(out):
         with open(out, 'rb') as f:
+            # استبدال المعرف بكلمة "اضغط هنا"
             caption_text = f"✅ تم الإنجاز لدفعة أبطال التمريض🔥\n\n🔗 [اضغط هنا لدخول البوت]({BOT_LINK})"
             bot.send_document(message.chat.id, f, caption=caption_text, parse_mode="Markdown")
         os.remove(out)
