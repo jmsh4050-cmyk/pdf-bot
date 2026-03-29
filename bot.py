@@ -25,20 +25,20 @@ def is_subscribed(user_id):
 
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
-    bot.reply_to(message, "أهلاً وسام! تم تحديث البوت لحل مشكلة الرموز الغريبة نهائياً.\nأرسل ملفك الآن.")
+    bot.reply_to(message, "أهلاً وسام! تم تحديث البوت لمنع تكرار الصور وحل مشاكل الرموز.\nأرسل ملفك الآن لدفعة التمريض.")
 
 @bot.message_handler(content_types=['document'])
 def handle_docs(message):
     user_id = message.from_user.id
     if not is_subscribed(user_id):
-        # ... (كود الاشتراك كما هو)
+        # ... (كود التحقق من الاشتراك)
         return
 
     if not message.document.file_name.lower().endswith('.pdf'):
         bot.reply_to(message, "يرجى إرسال ملف PDF.")
         return
 
-    msg = bot.reply_to(message, "⏳ جاري المعالجة المكثفة وحل مشاكل الرموز...")
+    msg = bot.reply_to(message, "⏳ جاري المعالجة ومنع تكرار الصور...")
 
     try:
         file_info = bot.get_file(message.document.file_id)
@@ -57,26 +57,34 @@ def handle_docs(message):
 
         pdf_out.add_page()
         doc = fitz.open(input_pdf)
+        
+        # قائمة عالمية لمنع تكرار الصور في كل الملف
+        all_processed_images = []
 
         for page in doc:
-            # --- الصور ---
-            processed_images = []
-            for img in page.get_images(full=True):
+            # --- معالجة الصور الصافية مع منع التكرار ---
+            image_list = page.get_images(full=True)
+            for img in image_list:
                 try:
                     xref = img[0]
-                    if xref in processed_images: continue
+                    # التعديل المطلوب: تجاهل إذا كانت الصورة مكررة
+                    if xref in all_processed_images: continue 
+                    
                     base_image = doc.extract_image(xref)
                     if base_image["width"] < 150 or base_image["height"] < 150: continue
+
                     img_name = f"tmp_{user_id}_{xref}.{base_image['ext']}"
                     with open(img_name, "wb") as f: f.write(base_image["image"])
+                    
                     if pdf_out.get_y() > 200: pdf_out.add_page()
                     pdf_out.image(img_name, x=45, w=100) 
-                    pdf_out.ln(2) 
-                    processed_images.append(xref)
+                    pdf_out.ln(2)
+                    
+                    all_processed_images.append(xref) # إضافة الصورة للقائمة المنفذة
                     os.remove(img_name)
                 except: pass
 
-            # --- النصوص ---
+            # --- معالجة النصوص ---
             text = page.get_text("text")
             if text.strip():
                 lines = text.split('\n')
@@ -84,16 +92,14 @@ def handle_docs(message):
                     line = line.strip()
                     if len(line) > 3:
                         try:
-                            # كشف العناوين
                             is_header = line.isupper() and len(line) < 60
                             translated = GoogleTranslator(source='en', target='ar').translate(line)
                             fixed_ar = fix_arabic(translated)
                             
                             if pdf_out.get_y() > 270: pdf_out.add_page()
 
-                            # --- حل المشكلة: استبدال الرموز المسببة للخطأ يدوياً قبل الطباعة ---
+                            # تنظيف الرموز المسببة للكراش
                             clean_eng = line.replace('“', '"').replace('”', '"').replace('’', "'").replace('‘', "'")
-                            # الخطوة الأخيرة لضمان عدم حدوث كراش
                             clean_eng = clean_eng.encode('cp1252', 'ignore').decode('cp1252')
 
                             # إنجليزي: 14 (أو 15 للعنوان)
@@ -110,13 +116,12 @@ def handle_docs(message):
 
                             pdf_out.set_text_color(220, 20, 60)
                             pdf_out.multi_cell(0, 5.5, fixed_ar, align='R')
-                            
                             pdf_out.ln(0.5) 
                         except: continue
 
         pdf_out.output(output_pdf)
         with open(output_pdf, 'rb') as f:
-            bot.send_document(message.chat.id, f, caption="✅ تم الحل النهائي لكل مشاكل الكراش لدفعة التمريض🔥")
+            bot.send_document(message.chat.id, f, caption="✅ تم الإنجاز لدفعة أبطال التمريض🔥\n(بدون تكرار صور وبدون كراش)")
 
         doc.close()
         if os.path.exists(input_pdf): os.remove(input_pdf)
