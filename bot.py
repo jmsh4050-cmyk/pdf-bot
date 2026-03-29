@@ -1,7 +1,6 @@
 import telebot
 import fitz  # PyMuPDF
 from deep_translator import GoogleTranslator
-from fpdf import FPDF
 import os
 import arabic_reshaper
 from bidi.algorithm import get_display
@@ -12,8 +11,6 @@ CHANNEL_USERNAME = '@W_S_B52'
 
 bot = telebot.TeleBot(API_TOKEN)
 user_data = {}
-
-# --- 1. الدوال المساعدة (يجب أن تكون في البداية) ---
 
 def fix_arabic(text):
     reshaped_text = arabic_reshaper.reshape(text)
@@ -29,132 +26,33 @@ def is_subscribed(user_id):
     except: return False
 
 def send_and_clean(message, out, inp):
-    """دالة الإرسال والتنظيف - تم رفعها للأعلى لتجنب خطأ Not Defined"""
     with open(out, 'rb') as f:
-        bot.send_document(message.chat.id, f, caption=f"✅ تم الإنجاز بدقة عالية لدفعة أبطال التمريض🔥\nقناتنا: {CHANNEL_USERNAME}")
+        bot.send_document(message.chat.id, f, caption=f"✅ تم الإنجاز لدفعة أبطال التمريض🔥")
     if os.path.exists(out): os.remove(out)
     if os.path.exists(inp): os.remove(inp)
 
-# --- 2. دوال المعالجة (الأشكال) ---
-
-def run_fpdf_style(message, file_info):
-    user_id = message.chat.id
-    try:
-        file_path = bot.get_file(file_info['file_id']).file_path
-        downloaded = bot.download_file(file_path)
-        input_pdf = f"in_{user_id}.pdf"
-        output_pdf = f"Style1_{file_info['file_name']}"
-        with open(input_pdf, 'wb') as f: f.write(downloaded)
-        pdf_out = FPDF()
-        try:
-            pdf_out.add_font('Amiri', '', 'Amiri.ttf', uni=True)
-            pdf_out.set_font('Amiri', size=11)
-        except: pdf_out.set_font("Arial", size=11)
-        pdf_out.add_page()
-        doc = fitz.open(input_pdf)
-        for page in doc:
-            text = page.get_text("text")
-            if text.strip():
-                lines = text.split('\n')
-                for line in lines:
-                    if len(line.strip()) > 3:
-                        translated = GoogleTranslator(source='en', target='ar').translate(line)
-                        fixed_ar = fix_arabic(translated)
-                        if pdf_out.get_y() > 250: pdf_out.add_page()
-                        pdf_out.set_text_color(0, 0, 0)
-                        pdf_out.multi_cell(0, 8, line, align='L')
-                        pdf_out.set_text_color(220, 20, 60)
-                        pdf_out.multi_cell(0, 8, fixed_ar, align='R')
-                        pdf_out.ln(2)
-        pdf_out.output(output_pdf)
-        doc.close()
-        send_and_clean(message, output_pdf, input_pdf)
-    except Exception as e: bot.reply_to(message, f"خطأ في الشكل 1: {e}")
-
-def run_inject_style(message, file_info):
-    user_id = message.chat.id
-    try:
-        file_path = bot.get_file(file_info['file_id']).file_path
-        downloaded = bot.download_file(file_path)
-        input_pdf = f"in_{user_id}.pdf"
-        output_pdf = f"Style2_{file_info['file_name']}"
-        with open(input_pdf, 'wb') as f: f.write(downloaded)
-        doc = fitz.open(input_pdf)
-        font_path = "Amiri.ttf"
-        for page in doc:
-            dict_text = page.get_text("dict")
-            for block in dict_text["blocks"]:
-                if "lines" in block:
-                    for line in block["lines"]:
-                        for span in line["spans"]:
-                            txt = span["text"].strip()
-                            if len(txt) > 2 and not contains_arabic(txt):
-                                rect = span["bbox"]
-                                page.draw_rect(rect, color=(1, 1, 1), fill=(1, 1, 1))
-                                eng_sz = span["size"] * 0.70
-                                page.insert_text(fitz.Point(rect[0], rect[1] + eng_sz), txt, fontsize=eng_sz, color=(0,0,0))
-                                trans = GoogleTranslator(source='en', target='ar').translate(txt)
-                                fixed = fix_arabic(trans)
-                                ar_sz = span["size"] * 0.60
-                                page.insert_text(fitz.Point(rect[0], rect[3]), fixed, fontsize=ar_sz, fontname="f0", fontfile=font_path, color=(0, 0.4, 0.8))
-        doc.save(output_pdf)
-        doc.close()
-        send_and_clean(message, output_pdf, input_pdf)
-    except Exception as e: bot.reply_to(message, f"خطأ في الشكل 2: {e}")
-
-def run_highlight_style(message, file_info):
-    user_id = message.chat.id
-    try:
-        file_path = bot.get_file(file_info['file_id']).file_path
-        downloaded = bot.download_file(file_path)
-        input_pdf = f"in_{user_id}.pdf"
-        output_pdf = f"Style3_{file_info['file_name']}"
-        with open(input_pdf, 'wb') as f: f.write(downloaded)
-        doc = fitz.open(input_pdf)
-        font_path = "Amiri.ttf"
-        for page in doc:
-            dict_text = page.get_text("dict")
-            for block in dict_text["blocks"]:
-                if "lines" in block:
-                    for line in block["lines"]:
-                        for span in line["spans"]:
-                            txt = span["text"].strip()
-                            if len(txt) > 2 and not contains_arabic(txt):
-                                rect = span["bbox"]
-                                page.draw_rect(rect, color=(1, 1, 1), fill=(1, 1, 1))
-                                eng_sz = span["size"] * 0.75
-                                page.insert_text(fitz.Point(rect[0], rect[1] + eng_sz), txt, fontsize=eng_sz, color=(0,0,0))
-                                trans = GoogleTranslator(source='en', target='ar').translate(txt)
-                                fixed = fix_arabic(trans)
-                                ar_sz = span["size"] * 0.60
-                                ar_rect = fitz.Rect(rect[0], rect[1] + eng_sz + 1, rect[2], rect[3] + 1)
-                                annot = page.add_highlight_annot(ar_rect)
-                                annot.set_colors(stroke=(0.8, 0.9, 1))
-                                annot.update()
-                                page.insert_text(fitz.Point(rect[0], ar_rect.y1 - 1), fixed, fontsize=ar_sz, fontname="f0", fontfile=font_path, color=(0, 0, 0))
-        doc.save(output_pdf)
-        doc.close()
-        send_and_clean(message, output_pdf, input_pdf)
-    except Exception as e: bot.reply_to(message, f"خطأ في الشكل 3: {e}")
-
+# --- الشكل 4: التصميم الاحترافي الصافي ---
 def run_professional_style(message, file_info):
     user_id = message.chat.id
     try:
         file_path = bot.get_file(file_info['file_id']).file_path
         downloaded = bot.download_file(file_path)
         input_pdf = f"in_{user_id}.pdf"
-        output_pdf = f"Style4_{file_info['file_name']}"
+        output_pdf = f"Style4_Clean_{file_info['file_name']}"
         with open(input_pdf, 'wb') as f: f.write(downloaded)
+
         doc = fitz.open(input_pdf)
         font_path = "Amiri.ttf"
+        
         for page in doc:
-            dict_text = page.get_text("dict")
-            # مسح أولي لكل النصوص لضمان عدم التكرار
-            for block in dict_text["blocks"]:
+            # --- الخطوة 1: مسح كل النصوص الموجودة في الصفحة لضمان عدم التداخل ---
+            text_instances = page.get_text("dict")["blocks"]
+            for block in text_instances:
                 if "lines" in block:
                     page.draw_rect(block["bbox"], color=(1, 1, 1), fill=(1, 1, 1))
 
-            for block in dict_text["blocks"]:
+            # --- الخطوة 2: إعادة بناء النص المترجم في أعمدة ---
+            for block in text_instances:
                 if "lines" in block:
                     for line in block["lines"]:
                         for span in line["spans"]:
@@ -162,53 +60,56 @@ def run_professional_style(message, file_info):
                             if len(txt) > 2 and not contains_arabic(txt):
                                 try:
                                     rect = span["bbox"]
-                                    page_width = page.rect.width
-                                    col_w = page_width / 2.5
-                                    gap = 15
+                                    mid_x = page.rect.width / 2
+                                    
+                                    # الترجمة
                                     trans = GoogleTranslator(source='en', target='ar').translate(txt)
                                     fixed_ar = fix_arabic(trans)
-                                    is_header = any(k in txt for k in ["Nursing", "Care", "Diagnosis", "Risk", "Wound"])
                                     
+                                    # تمييز العناوين (تظليل خفيف)
+                                    is_header = any(k in txt.lower() for k in ["nursing", "diagnosis", "risk", "physiology", "system"])
                                     if is_header:
-                                        page.draw_rect(fitz.Rect(0, rect[1], page_width, rect[3]), color=(0.95, 0.95, 0.95), fill=(0.95, 0.95, 0.95))
-                                    
-                                    # حقن الإنكليزي (يسار) والعربي (يمين)
-                                    page.insert_textbox(fitz.Rect(10, rect[1], col_w, rect[3]), txt, fontsize=span["size"]*0.8, color=(0,0,0))
-                                    page.insert_textbox(fitz.Rect(col_w + gap, rect[1], page_width - 10, rect[3]), fixed_ar, fontsize=span["size"]*0.7, fontname="f0", fontfile=font_path, color=(0,0,0), align=fitz.TEXT_ALIGN_RIGHT)
+                                        header_bg = fitz.Rect(0, rect[1]-2, page.rect.width, rect[3]+2)
+                                        page.draw_rect(header_bg, color=(0.96, 0.96, 0.96), fill=(0.96, 0.96, 0.96))
+
+                                    # حقن النص - عمود يسار (إنكليزي) وعمود يمين (عربي)
+                                    # الإنكليزي
+                                    page.insert_textbox(
+                                        fitz.Rect(20, rect[1], mid_x - 10, rect[3] + 5),
+                                        txt, fontsize=span["size"] * 0.85, color=(0, 0, 0), align=0
+                                    )
+                                    # العربي
+                                    page.insert_textbox(
+                                        fitz.Rect(mid_x + 10, rect[1], page.rect.width - 20, rect[3] + 5),
+                                        fixed_ar, fontsize=span["size"] * 0.75, 
+                                        fontname="f0", fontfile=font_path, color=(0, 0, 0), align=2
+                                    )
                                 except: continue
+        
         doc.save(output_pdf)
         doc.close()
         send_and_clean(message, output_pdf, input_pdf)
-    except Exception as e: bot.reply_to(message, f"خطأ في الشكل 4: {e}")
+    except Exception as e: 
+        bot.reply_to(message, f"خطأ في الشكل 4: {e}")
 
-# --- 3. معالجات البوت (Handlers) ---
-
+# --- باقي أجزاء البوت (Handlers) ---
 @bot.message_handler(commands=['start'])
 def start(message):
-    bot.reply_to(message, f"أهلاً وسام! أرسل ملف PDF واختار شكل الترجمة المفضل.\nقناتنا: {CHANNEL_USERNAME}")
+    bot.reply_to(message, "أهلاً وسام! أرسل ملف PDF للترجمة.")
 
 @bot.message_handler(content_types=['document'])
 def handle_docs(message):
     if not is_subscribed(message.from_user.id):
-        bot.reply_to(message, "يرجى الاشتراك بالقناة أولاً.")
-        return
-    if not message.document.file_name.lower().endswith('.pdf'):
-        bot.reply_to(message, "أرسل PDF فقط.")
+        bot.reply_to(message, "اشترك بالقناة أولاً.")
         return
     user_data[message.from_user.id] = {'file_id': message.document.file_id, 'file_name': message.document.file_name}
     markup = telebot.types.InlineKeyboardMarkup()
-    markup.add(telebot.types.InlineKeyboardButton("1", callback_data="s_1"), telebot.types.InlineKeyboardButton("2", callback_data="s_2"))
-    markup.add(telebot.types.InlineKeyboardButton("3", callback_data="s_3"), telebot.types.InlineKeyboardButton("4 (احترافي)", callback_data="s_4"))
-    bot.reply_to(message, "اختار الشكل:", reply_markup=markup)
+    markup.add(telebot.types.InlineKeyboardButton("الشكل الرابع (الاحترافي)", callback_data="s_4"))
+    bot.reply_to(message, "اختار التنسيق:", reply_markup=markup)
 
-@bot.callback_query_handler(func=lambda call: True)
-def callback(call):
-    uid = call.from_user.id
-    if uid not in user_data: return
-    bot.edit_message_text("⏳ جاري المعالجة...", call.message.chat.id, call.message.message_id)
-    if call.data == "s_1": run_fpdf_style(call.message, user_data[uid])
-    elif call.data == "s_2": run_inject_style(call.message, user_data[uid])
-    elif call.data == "s_3": run_highlight_style(call.message, user_data[uid])
-    elif call.data == "s_4": run_professional_style(call.message, user_data[uid])
+@bot.callback_query_handler(func=lambda call: call.data == "s_4")
+def callback_query(call):
+    bot.edit_message_text("⏳ جاري تنظيف الصفحة وترجمتها...", call.message.chat.id, call.message.message_id)
+    run_professional_style(call.message, user_data[call.from_user.id])
 
 bot.polling()
