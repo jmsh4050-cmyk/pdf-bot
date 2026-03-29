@@ -84,41 +84,45 @@ def handle_docs(message):
                 except: pass
 
             # --- النصوص ---
-            text = page.get_text("text")
-            if text.strip():
-                lines = text.split('\n')
-                for line in lines:
-                    line = line.strip()
-                    if len(line) > 3:
-                        try:
-                            # كشف العناوين (إذا كان السطر أحرف كبيرة وقصير)
-                            is_header = line.isupper() and len(line) < 60
-                            
-                            translated = GoogleTranslator(source='en', target='ar').translate(line)
-                            fixed_ar = fix_arabic(translated)
-                            
-                            if pdf_out.get_y() > 270: pdf_out.add_page()
+            # --- النصوص ---
+text = page.get_text("text")
+if text.strip():
+    lines = text.split('\n')
+    for line in lines:
+        line = line.strip()
+        if len(line) > 3:
+            try:
+                # كشف العناوين
+                is_header = line.isupper() and len(line) < 60
+                
+                translated = GoogleTranslator(source='en', target='ar').translate(line)
+                fixed_ar = fix_arabic(translated)
+                
+                if pdf_out.get_y() > 270: pdf_out.add_page()
 
-                            # تنظيف النص الإنجليزي منعاً للكراش
-                            clean_eng = line.encode('cp1252', 'ignore').decode('cp1252')
+                # --- الحل الجذري للمشكلة هنا ---
+                # نقوم بتنظيف النص الإنجليزي وتجاهل أي حرف يسبب 'latin-1' error
+                clean_eng = line.encode('cp1252', 'ignore').decode('cp1252')
 
-                            # 1. إنجليزي: عنوان (15 Bold) أو نص عادي (14)
-                            pdf_out.set_font('Arial', 'B' if is_header else '', 15 if is_header else 14)
-                            pdf_out.set_text_color(0, 0, 0)
-                            pdf_out.multi_cell(0, 5.5, clean_eng, align='L') # تقليل المسافة العمودية لضغط الفراغ
+                # تطبيق أحجام الخطوط التي طلبتها
+                # إنجليزي: 14 (أو 15 للعنوان)
+                pdf_out.set_font('Arial', 'B' if is_header else '', 15 if is_header else 14)
+                pdf_out.set_text_color(0, 0, 0)
+                pdf_out.multi_cell(0, 5.5, clean_eng, align='L')
 
-                            # 2. عربي: عنوان (15 Bold) أو نص عادي (14.5)
-                            try:
-                                f_style = 'AmiriB' if is_header else 'Amiri'
-                                pdf_out.set_font(f_style, size=15 if is_header else 14.5)
-                            except:
-                                pdf_out.set_font('Arial', size=14.5)
+                # عربي: 14.5 (أو 15 للعنوان)
+                try:
+                    f_style = 'AmiriB' if is_header else 'Amiri'
+                    pdf_out.set_font(f_style, size=15 if is_header else 14.5)
+                except:
+                    pdf_out.set_font('Arial', size=14.5)
 
-                            pdf_out.set_text_color(220, 20, 60)
-                            pdf_out.multi_cell(0, 5.5, fixed_ar, align='R')
-                            
-                            pdf_out.ln(1) # فراغ صغير جداً بين الفقرات
-                        except: continue
+                pdf_out.set_text_color(220, 20, 60)
+                pdf_out.multi_cell(0, 5.5, fixed_ar, align='R')
+                
+                pdf_out.ln(1)
+            except: continue
+
 
         pdf_out.output(output_pdf)
         with open(output_pdf, 'rb') as f:
