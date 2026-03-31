@@ -1,7 +1,5 @@
 pyTelegramBotAPI
 pymupdf
-deep-translator
-fpdf2
 arabic-reshaper
 python-bidi
-google-genai
+google-generativeai
