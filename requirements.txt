@@ -2,4 +2,4 @@ pyTelegramBotAPI
 pymupdf
 arabic-reshaper
 python-bidi
-google-generativeai
+google-generativeai==0.8.3
