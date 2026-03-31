@@ -1,6 +1,7 @@
-pyTelegramBotAPI==4.12.0
-pymupdf==1.23.0
-google-generativeai==0.8.3
+pyTelegramBotAPI
+pymupdf
 deep-translator
+fpdf2
 arabic-reshaper
 python-bidi
+google-genai
