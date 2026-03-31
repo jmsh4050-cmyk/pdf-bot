@@ -14,7 +14,7 @@ BOT_LINK = 'https://t.me/WSM_bot'
 # إعداد كود جمناي الخاص بك
 GEMINI_API_KEY = "AIzaSyCOjt7oGeuju26z6yR5Qwz3vKJJC_glCpo"
 genai.configure(api_key=GEMINI_API_KEY)
-model = genai.GenerativeModel('gemini-1.5-flash')
+model = genai.GenerativeModel('models/gemini-1.5-flash-latest')
 
 bot = telebot.TeleBot(API_TOKEN)
 user_data = {}
