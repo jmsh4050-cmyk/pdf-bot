@@ -1,5 +1,5 @@
-pyTelegramBotAPI==4.20.0
-pymupdf==1.24.1
-arabic-reshaper==3.0.0
-python-bidi==0.4.2
-google-generativeai==0.8.3
+pyTelegramBotAPI
+pymupdf
+arabic-reshaper
+python-bidi
+google-generativeai>=0.8.3
