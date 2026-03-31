@@ -10,13 +10,17 @@ import google.generativeai as genai  # مكتبة جمناي الجديدة
 API_TOKEN = '7924093069:AAGjjy7SomYnfUWSWu1xGY337aIYzT42tCA'
 CHANNEL_USERNAME = '@W_S_B52' 
 BOT_LINK = 'https://t.me/WSM_bot' 
+  
+# --- إعداد ذكاء Gemini المحمي ---
+# هنا سحبنا المفتاح من "الخزنة" في Railway وليس كتابةً
+GEMINI_API_KEY = os.getenv("GEMINI_KEY")
 
-# إعداد كود جمناي الخاص بك
-GEMINI_API_KEY = "AIzaSyCOjt7oGeuju26z6yR5Qwz3vKJJC_glCpo"
-genai.configure(api_key=GEMINI_API_KEY)
-
-# استخدام الإصدار 1.5 flash مع توضيح المسار الكامل لتجنب خطأ 404
-model = genai.GenerativeModel(model_name="gemini-1.5-flash")
+if GEMINI_API_KEY:
+    genai.configure(api_key=GEMINI_API_KEY)
+    # نستخدم هذا الاسم لضمان استقرار الخدمة في العراق
+    model = genai.GenerativeModel('gemini-1.5-flash')
+else:
+    print("⚠️ فشل في العثور على المفتاح السري!")
 
 
 bot = telebot.TeleBot(API_TOKEN)
