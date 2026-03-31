@@ -14,7 +14,10 @@ BOT_LINK = 'https://t.me/WSM_bot'
 # إعداد كود جمناي الخاص بك
 GEMINI_API_KEY = "AIzaSyCOjt7oGeuju26z6yR5Qwz3vKJJC_glCpo"
 genai.configure(api_key=GEMINI_API_KEY)
-model = genai.GenerativeModel('models/gemini-1.5-flash-latest')
+
+# استخدام الإصدار 1.5 flash مع توضيح المسار الكامل لتجنب خطأ 404
+model = genai.GenerativeModel(model_name="gemini-1.5-flash")
+
 
 bot = telebot.TeleBot(API_TOKEN)
 user_data = {}
