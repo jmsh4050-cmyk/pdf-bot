@@ -13,7 +13,8 @@ CHANNEL_USERNAME = '@W_S_B52'
 # إعداد ذكاء Gemini
 if GEMINI_API_KEY:
     genai.configure(api_key=GEMINI_API_KEY)
-    model = genai.GenerativeModel('gemini-1.5-flash')
+model = genai.GenerativeModel(model_name="gemini-1.5-flash")
+
 
 bot = telebot.TeleBot(API_TOKEN)
 user_data = {}
