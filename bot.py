@@ -5,190 +5,195 @@ import os
 import arabic_reshaper
 from bidi.algorithm import get_display
 
-# --- الإعدادات الأساسية (تم وضع التوكن مباشرة) ---
-# التوكن الخاص ببوتك
-BOT_TOKEN = '7924093069:AAGjjy7SomYnfUWSWu1xGY337aIYzT42tCA'
+# --- الإعدادات ---
+API_TOKEN = '7924093069:AAGjjy7SomYnfUWSWu1xGY337aIYzT42tCA'
+# تم إزالة CHANNEL_USERNAME لعدم الحاجة للاشتراك
 
-bot = telebot.TeleBot(BOT_TOKEN)
+bot = telebot.TeleBot(API_TOKEN)
+user_data = {}
 
-# مجلد مؤقت للملفات
-DOWNLOADS_DIR = 'downloads'
-if not os.path.exists(DOWNLOADS_DIR):
-    os.makedirs(DOWNLOADS_DIR)
-
-# --- التعديل هنا: استخدام خط Amiri.ttf ---
-# تأكد من أن هذا الملف موجود في نفس مجلد ملف البوت على GitHub
-FONT_FILE = 'Amiri.ttf' 
-
-# --- وظائف معالجة النصوص العربية ---
-
-def process_arabic_text(text):
-    """إعادة تشكيل النص العربي وتصحيح الاتجاه (RTL)"""
-    if not text or not text.strip():
-        return ""
-    try:
-        # إعادة تشكيل الحروف لتبدو متصلة بشكل صحيح
-        reshaped_text = arabic_reshaper.reshape(text)
-        # تصحيح الاتجاه ليكون من اليمين لليسار
-        bidi_text = get_display(reshaped_text)
-        return bidi_text
-    except Exception as e:
-        print(f"Error processing Arabic text: {e}")
-        return text # في حال الخطأ نعيد النص كما هو
+def fix_arabic(text):
+    if not text: return ""
+    reshaped_text = arabic_reshaper.reshape(text)
+    return get_display(reshaped_text)
 
 def contains_arabic(text):
-    """التحقق من احتواء النص على حروف عربية"""
-    if not text: return False
-    # التحقق من نطاق الحروف العربية في Unicode
     return any("\u0600" <= char <= "\u06FF" for char in text)
 
-# --- معالجة رسائل تيليجرام ---
-
-@bot.message_handler(commands=['start', 'help'])
+@bot.message_handler(commands=['start'])
 def send_welcome(message):
     user_name = message.from_user.first_name 
-    welcome_text = (
-        f"أهلاً {user_name}! البوت جاهز لترجمة ملفات الـ PDF الطبية ✅\n\n"
-        "أرسل ملف الـ PDF مباشرة، وسأقوم بترجمته إلى العربية باستخدام محرك جوجل.\n"
-        "(الترجمة ستظهر تحت السطور الأصلية باللون الأحمر)."
-    )
-    bot.reply_to(message, welcome_text)
+    bot.reply_to(message, f"أهلاً {user_name}! البوت جاهز للترجمة المزدوجة الآن ✅\nأرسل ملف الـ PDF مباشرة.")
 
 @bot.message_handler(content_types=['document'])
 def handle_docs(message):
-    chat_id = message.chat.id
-    
-    # التحقق من أن الملف هو PDF
     if not message.document.file_name.lower().endswith('.pdf'):
-        bot.reply_to(message, "⚠️ عذراً، هذا البوت يدعم ملفات PDF فقط.")
+        bot.reply_to(message, "يرجى إرسال ملف PDF.")
         return
 
-    # إرسال رسالة حالة للمستخدم
-    status_message = bot.reply_to(message, "⏳ جاري استلام الملف ومعالجته... يرجى الانتظار.")
+    user_id = message.from_user.id
+    user_data[user_id] = {'file_id': message.document.file_id, 'file_name': message.document.file_name}
     
-    src_filename = None
-    output_filename = None
-
-    try:
-        # الحصول على معلومات الملف لتحميله
-        file_info = bot.get_file(message.document.file_id)
-        
-        # تحديد مسارات الحفظ المؤقت (استخدام مجلد downloads للترتيب)
-        # تنظيف اسم الملف من الحروف الخاصة
-        safe_filename = "".join([c for c in message.document.file_name if c.isalpha() or c.isdigit() or c==' ' or c=='.']).rstrip()
-        src_filename = os.path.join(DOWNLOADS_DIR, f"in_{chat_id}_{safe_filename}")
-        output_filename = os.path.join(DOWNLOADS_DIR, f"translated_{chat_id}_{safe_filename}")
-
-        # 1. تحميل الملف مؤقتاً
-        downloaded_file = bot.download_file(file_info.file_path)
-        with open(src_filename, 'wb') as new_file:
-            new_file.write(downloaded_file)
-
-        # 2. تحديث الحالة وبدء الترجمة
-        bot.edit_message_text("⏳ جاري قراءة الملف وترجمته وإنشاء ملف جديد... هذا قد يستغرق بعض الوقت.", chat_id, status_message.message_id)
-        
-        # تشغيل دالة الترجمة (الترجمة تحت الخط بالأحمر)
-        translate_with_red_arabic(src_filename, output_filename)
-
-        # 3. إرسال الملف المترجم
-        # نستخدم REPLY لكي يعرف المستخدم أي ملف تم ترجمته
-        bot.edit_message_text("✅ تمت الترجمة بنجاح! جاري إرسال الملف...", chat_id, status_message.message_id)
-        with open(output_filename, 'rb') as f:
-            bot.send_document(chat_id, f, caption="✅ تم الإنجاز! الترجمة تحت السطور.")
-
-    except Exception as e:
-        print(f"Critical Error: {e}")
-        # إبلاغ المستخدم بالخطأ بشكل مهذب، مع تفاصيل الخطأ (لأغراض التطوير حالياً)
-        bot.edit_message_text(f"❌ حدث خطأ غير متوقع أثناء معالجة الملف: {str(e)}", chat_id, status_message.message_id)
+    markup = telebot.types.InlineKeyboardMarkup()
+    btn1 = telebot.types.InlineKeyboardButton("1️⃣ الكلاسيكي (مع الصور) 🖼️", callback_data="style_fpdf")
+    btn2 = telebot.types.InlineKeyboardButton("2️⃣ شكل الحقن (تحت الخط) 💉", callback_data="style_inject")
+    btn3 = telebot.types.InlineKeyboardButton("3️⃣ شكل الهايلايت 🖍️", callback_data="style_high")
+    markup.add(btn1, btn2, btn3)
     
-    finally:
-        # تنظيف الملفات المؤقتة للحفاظ على مساحة سيرفر Railway
-        if src_filename and os.path.exists(src_filename):
-            os.remove(src_filename)
-        if output_filename and os.path.exists(output_filename):
-            os.remove(output_filename)
+    bot.reply_to(message, "اختار نوع التنسيق المفضل لديك:", reply_markup=markup)
 
-# --- دالة الترجمة باستخدام PyMuPDF ---
+@bot.callback_query_handler(func=lambda call: call.data.startswith('style_'))
+def process_style(call):
+    user_id = call.from_user.id
+    if user_id not in user_data:
+        bot.answer_callback_query(call.id, "أرسل الملف مرة ثانية.")
+        return
+    file_info = user_data[user_id]
+    bot.edit_message_text("⏳ جاري المعالجة... انتظر ثواني", call.message.chat.id, call.message.message_id)
+    
+    if call.data == "style_fpdf":
+        run_fpdf_style_fixed(call.message, file_info)
+    elif call.data == "style_inject":
+        run_inject_style(call.message, file_info)
+    else:
+        run_highlight_style(call.message, file_info)
 
-def translate_with_red_arabic(input_path, output_path):
-    """
-    قراءة ملف PDF، الحفاظ على التنسيق الإنجليزي،
-    وإضافة ترجمة عربية (أحمر) تحت كل سطر.
-    """
+# --- الشكل 1: الصور + الشرح (مثل ملف الهرمونات) ---
+def run_fpdf_style_fixed(message, file_info):
+    user_id = message.chat.id
     try:
-        # فتح ملف الـ PDF الأصلي
-        doc = fitz.open(input_path)
-    except Exception as e:
-        raise Exception(f"خطأ في فتح ملف PDF الأصلي: {e}")
+        file_path = bot.get_file(file_info['file_id']).file_path
+        downloaded = bot.download_file(file_path)
+        input_pdf = f"in_{user_id}.pdf"
+        output_pdf = f"Style1_{file_info['file_name']}"
+        with open(input_pdf, 'wb') as f: f.write(downloaded)
 
-    # التحقق من وجود ملف الخط (خطوة حرجة جداً للعربية)
-    if not os.path.exists(FONT_FILE):
-        raise FileNotFoundError(f"⚠️ ملف الخط '{FONT_FILE}' غير موجود! تأكد من رفعه بجانب الملف الرئيسي.")
+        doc = fitz.open(input_pdf)
+        out_doc = fitz.open() 
+        font_path = "Amiri.ttf" 
 
-    # مترجم محرك جوجل
-    translator = GoogleTranslator(source='auto', target='ar')
-
-    # معالجة كل صفحة
-    for page in doc:
-        try:
-            # استخراج النص من الصفحة على شكل قاموس (dict) للحصول على معلومات الموقع (bbox)
-            dict_text = page.get_text("dict")
+        for page in doc:
+            new_page = out_doc.new_page()
+            y_offset = 50
             
+            # استخراج الصور ووضعها أولاً (مثل صفحة 5 في الهرمونات)
+            processed_images = []
+            for img in page.get_images(full=True):
+                try:
+                    xref = img[0]
+                    if xref in processed_images: continue
+                    base_image = doc.extract_image(xref)
+                    if base_image["width"] < 120: continue 
+
+                    img_name = f"tmp_{user_id}_{xref}.{base_image['ext']}"
+                    with open(img_name, "wb") as f: f.write(base_image["image"])
+                    
+                    # وضع الصورة في مكانها
+                    img_rect = fitz.Rect(70, y_offset, 500, y_offset + 220)
+                    new_page.insert_image(img_rect, filename=img_name, keep_proportion=True)
+                    y_offset += 240
+                    processed_images.append(xref)
+                    os.remove(img_name)
+                except: pass
+
+            # إضافة النصوص المترجمة
+            text = page.get_text("text")
+            if text.strip():
+                lines = text.split('\n')
+                for line in lines:
+                    if len(line.strip()) > 3:
+                        try:
+                            translated = GoogleTranslator(source='en', target='ar').translate(line)
+                            fixed_ar = fix_arabic(translated)
+                            if y_offset > 750:
+                                new_page = out_doc.new_page()
+                                y_offset = 50
+                            new_page.insert_text((50, y_offset), line, fontsize=12, color=(0,0,0))
+                            y_offset += 18
+                            new_page.insert_text((50, y_offset), fixed_ar, fontsize=12, fontname="f0", fontfile=font_path, color=(0.7, 0, 0))
+                            y_offset += 30
+                        except: continue
+
+        out_doc.save(output_pdf)
+        out_doc.close()
+        doc.close()
+        send_and_clean(message, output_pdf, input_pdf)
+    except Exception as e: bot.reply_to(message, f"خطأ: {e}")
+
+# --- الشكل 2: الحقن (الترجمة تحت الإنجليزي) ---
+def run_inject_style(message, file_info):
+    user_id = message.chat.id
+    try:
+        file_path = bot.get_file(file_info['file_id']).file_path
+        downloaded = bot.download_file(file_path)
+        input_pdf = f"in_{user_id}.pdf"
+        output_pdf = f"Style2_Inject_{file_info['file_name']}"
+        with open(input_pdf, 'wb') as f: f.write(downloaded)
+        doc = fitz.open(input_pdf)
+        font_path = "Amiri.ttf"
+        for page in doc:
+            dict_text = page.get_text("dict")
             for block in dict_text["blocks"]:
                 if "lines" in block:
                     for line in block["lines"]:
                         for span in line["spans"]:
                             txt = span["text"].strip()
-                            
-                            # معالجة النص فقط إذا لم يكن فارغاً ولا يحتوي على عربي (تجنب إعادة ترجمة المترجم)
                             if len(txt) > 2 and not contains_arabic(txt):
                                 try:
-                                    # الحصول على موقع النص الحالي (bbox: x0, y0, x1, y1)
                                     rect = span["bbox"]
-                                    
-                                    # 1. ترجمة النص إلى العربية
-                                    translated_text = translator.translate(txt)
-                                    
-                                    # 2. معالجة النص العربي للعرض (تعديل الاتجاه والتشكيل)
-                                    fixed_arabic = process_arabic_text(translated_text)
-                                    
-                                    if fixed_arabic:
-                                        # 3. حساب موقع الترجمة العربية
-                                        # سنستخدم حجم الخط الأصلي كقاعدة للإزاحة العمودية
-                                        font_size = span["size"]
-                                        offset_y = font_size * 1.3 # إزاحة لأسفل (تم زيادتها قليلاً لخط Amiri)
-
-                                        # تحديد النقطة التي سنبدأ عندها الكتابة العربية
-                                        # x0 (البداية الأفقية)، y1 (نهاية النص الأصلي من الأسفل) + الإزاحة
-                                        arabic_start_point = fitz.Point(rect[0], rect[1] + offset_y)
-                                        
-                                        # 4. كتابة النص العربي المترجم في ملف الـ PDF الأصلي
-                                        # color=(0.8, 0, 0) هو تدرج من اللون الأحمر
-                                        # fontname="f0" و fontfile=FONT_FILE هما الطريقة لتعريف خط Unicode في fitz
-                                        page.insert_text(arabic_start_point, 
-                                                          fixed_arabic, 
-                                                          fontsize=font_size * 0.9, # حجم الخط العربي أصغر قليلاً
-                                                          fontname="f0", 
-                                                          fontfile=FONT_FILE, 
-                                                          color=(0.8, 0, 0)) # اللون الأحمر
-                                except Exception as t_err:
-                                    # تسجيل خطأ ترجمة كتلة محددة والاستمرار
-                                    print(f"Error during translation/writing span: {t_err}")
-                                    continue
-        except Exception as p_err:
-            # تسجيل خطأ معالجة صفحة والاستمرار
-            print(f"Error processing page: {p_err}")
-            continue
-
-    # حفظ ملف الـ PDF الناتج
-    try:
-        # استخدام deflate=True لتقليل حجم الملف (غير ضروري ولكنه مفضل)
-        doc.save(output_path, deflate=True)
+                                    page.draw_rect(rect, color=(1, 1, 1), fill=(1, 1, 1))
+                                    # إنجليزي فوق
+                                    eng_sz = span["size"] * 0.8
+                                    page.insert_text(fitz.Point(rect[0], rect[1] + eng_sz), txt, fontsize=eng_sz, color=(0,0,0))
+                                    # عربي تحت (إزاحة لأسفل)
+                                    trans = GoogleTranslator(source='en', target='ar').translate(txt)
+                                    fixed = fix_arabic(trans)
+                                    ar_sz = span["size"] * 0.6
+                                    page.insert_text(fitz.Point(rect[0], rect[3] + ar_sz - 1), fixed, fontsize=ar_sz, fontname="f0", fontfile=font_path, color=(0, 0.4, 0.8))
+                                except: continue
+        doc.save(output_pdf)
         doc.close()
-    except Exception as e:
-        raise Exception(f"خطأ في حفظ ملف PDF الناتج: {e}")
+        send_and_clean(message, output_pdf, input_pdf)
+    except Exception as e: bot.reply_to(message, f"خطأ: {e}")
 
-# --- تشغيل البوت ---
-print("البوت يعمل الآن... بانتظار الملفات.")
-# استخدام infinity_polling لضمان استمرار عمل البوت وعدم توقفه عند الأخطاء البسيطة
-bot.infinity_polling()
+def run_highlight_style(message, file_info):
+    # كود الهايلايت يبقى كما هو مع تكبير الخط العربي
+    user_id = message.chat.id
+    try:
+        file_path = bot.get_file(file_info['file_id']).file_path
+        downloaded = bot.download_file(file_path)
+        input_pdf = f"in_{user_id}.pdf"
+        output_pdf = f"Style3_{file_info['file_name']}"
+        with open(input_pdf, 'wb') as f: f.write(downloaded)
+        doc = fitz.open(input_pdf)
+        font_path = "Amiri.ttf"
+        for page in doc:
+            dict_text = page.get_text("dict")
+            for block in dict_text["blocks"]:
+                if "lines" in block:
+                    for line in block["lines"]:
+                        for span in line["spans"]:
+                            txt = span["text"].strip()
+                            if len(txt) > 2 and not contains_arabic(txt):
+                                try:
+                                    rect = span["bbox"]
+                                    trans = GoogleTranslator(source='en', target='ar').translate(txt)
+                                    fixed = fix_arabic(trans)
+                                    ar_sz = span["size"] * 0.65 
+                                    high_rect = [rect[0], rect[3] - 2, rect[2], rect[3] + ar_sz - 1]
+                                    page.draw_rect(high_rect, color=(0.92, 0.96, 1), fill=(0.92, 0.96, 1))
+                                    page.insert_text(fitz.Point(rect[0], high_rect[3]-0.5), fixed, fontsize=ar_sz, fontname="f0", fontfile=font_path, color=(0.1, 0.3, 0.7))
+                                except: continue
+        doc.save(output_pdf)
+        doc.close()
+        send_and_clean(message, output_pdf, input_pdf)
+    except Exception as e: bot.reply_to(message, f"خطأ: {e}")
+
+def send_and_clean(message, out, inp):
+    if os.path.exists(out):
+        with open(out, 'rb') as f:
+            bot.send_document(message.chat.id, f, caption="✅ تم الإنجاز بتصميمك الخاص!")
+        os.remove(out)
+    if os.path.exists(inp): os.remove(inp)
+
+bot.polling()
