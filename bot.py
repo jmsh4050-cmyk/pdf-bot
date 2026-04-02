@@ -16,18 +16,18 @@ DOWNLOADS_DIR = 'downloads'
 if not os.path.exists(DOWNLOADS_DIR):
     os.makedirs(DOWNLOADS_DIR)
 
-# اسم ملف الخط العربي (يجب أن يكون مرفوعاً مع المشروع)
-# تأكد من رفع هذا الخط (.ttf) مع المشروع على GitHub
-FONT_FILE = 'Arial.ttf' 
+# --- التعديل هنا: استخدام خط Amiri.ttf ---
+# تأكد من أن هذا الملف موجود في نفس مجلد ملف البوت على GitHub
+FONT_FILE = 'Amiri.ttf' 
 
 # --- وظائف معالجة النصوص العربية ---
 
 def process_arabic_text(text):
     """إعادة تشكيل النص العربي وتصحيح الاتجاه (RTL)"""
-    if not text.strip():
+    if not text or not text.strip():
         return ""
     try:
-        # إعادة تشكيل الحروف
+        # إعادة تشكيل الحروف لتبدو متصلة بشكل صحيح
         reshaped_text = arabic_reshaper.reshape(text)
         # تصحيح الاتجاه ليكون من اليمين لليسار
         bidi_text = get_display(reshaped_text)
@@ -39,6 +39,7 @@ def process_arabic_text(text):
 def contains_arabic(text):
     """التحقق من احتواء النص على حروف عربية"""
     if not text: return False
+    # التحقق من نطاق الحروف العربية في Unicode
     return any("\u0600" <= char <= "\u06FF" for char in text)
 
 # --- معالجة رسائل تيليجرام ---
@@ -48,7 +49,7 @@ def send_welcome(message):
     user_name = message.from_user.first_name 
     welcome_text = (
         f"أهلاً {user_name}! البوت جاهز لترجمة ملفات الـ PDF الطبية ✅\n\n"
-        "أرسل ملف الـ PDF مباشرة، وسأقوم بترجمته إلى العربية.\n"
+        "أرسل ملف الـ PDF مباشرة، وسأقوم بترجمته إلى العربية باستخدام محرك جوجل.\n"
         "(الترجمة ستظهر تحت السطور الأصلية باللون الأحمر)."
     )
     bot.reply_to(message, welcome_text)
@@ -69,9 +70,11 @@ def handle_docs(message):
     output_filename = None
 
     try:
+        # الحصول على معلومات الملف لتحميله
         file_info = bot.get_file(message.document.file_id)
         
-        # تحديد المسارات (استخدام مجلد downloads للترتيب)
+        # تحديد مسارات الحفظ المؤقت (استخدام مجلد downloads للترتيب)
+        # تنظيف اسم الملف من الحروف الخاصة
         safe_filename = "".join([c for c in message.document.file_name if c.isalpha() or c.isdigit() or c==' ' or c=='.']).rstrip()
         src_filename = os.path.join(DOWNLOADS_DIR, f"in_{chat_id}_{safe_filename}")
         output_filename = os.path.join(DOWNLOADS_DIR, f"translated_{chat_id}_{safe_filename}")
@@ -88,12 +91,14 @@ def handle_docs(message):
         translate_with_red_arabic(src_filename, output_filename)
 
         # 3. إرسال الملف المترجم
+        # نستخدم REPLY لكي يعرف المستخدم أي ملف تم ترجمته
         bot.edit_message_text("✅ تمت الترجمة بنجاح! جاري إرسال الملف...", chat_id, status_message.message_id)
         with open(output_filename, 'rb') as f:
             bot.send_document(chat_id, f, caption="✅ تم الإنجاز! الترجمة تحت السطور.")
 
     except Exception as e:
         print(f"Critical Error: {e}")
+        # إبلاغ المستخدم بالخطأ بشكل مهذب، مع تفاصيل الخطأ (لأغراض التطوير حالياً)
         bot.edit_message_text(f"❌ حدث خطأ غير متوقع أثناء معالجة الملف: {str(e)}", chat_id, status_message.message_id)
     
     finally:
@@ -116,9 +121,9 @@ def translate_with_red_arabic(input_path, output_path):
     except Exception as e:
         raise Exception(f"خطأ في فتح ملف PDF الأصلي: {e}")
 
-    # التحقق من وجود ملف الخط (خطوة حرجة للعربية)
+    # التحقق من وجود ملف الخط (خطوة حرجة جداً للعربية)
     if not os.path.exists(FONT_FILE):
-        raise FileNotFoundError(f"⚠️ ملف الخط '{FONT_FILE}' غير موجود! لن تظهر اللغة العربية بدونه.")
+        raise FileNotFoundError(f"⚠️ ملف الخط '{FONT_FILE}' غير موجود! تأكد من رفعه بجانب الملف الرئيسي.")
 
     # مترجم محرك جوجل
     translator = GoogleTranslator(source='auto', target='ar')
@@ -135,13 +140,13 @@ def translate_with_red_arabic(input_path, output_path):
                         for span in line["spans"]:
                             txt = span["text"].strip()
                             
-                            # معالجة النص فقط إذا لم يكن فارغاً ولا يحتوي على عربي (تجنب ترجمة المترجم)
+                            # معالجة النص فقط إذا لم يكن فارغاً ولا يحتوي على عربي (تجنب إعادة ترجمة المترجم)
                             if len(txt) > 2 and not contains_arabic(txt):
                                 try:
                                     # الحصول على موقع النص الحالي (bbox: x0, y0, x1, y1)
                                     rect = span["bbox"]
                                     
-                                    # 1. ترجمة النص
+                                    # 1. ترجمة النص إلى العربية
                                     translated_text = translator.translate(txt)
                                     
                                     # 2. معالجة النص العربي للعرض (تعديل الاتجاه والتشكيل)
@@ -151,7 +156,7 @@ def translate_with_red_arabic(input_path, output_path):
                                         # 3. حساب موقع الترجمة العربية
                                         # سنستخدم حجم الخط الأصلي كقاعدة للإزاحة العمودية
                                         font_size = span["size"]
-                                        offset_y = font_size * 1.2 # إزاحة بسيطة لأسفل
+                                        offset_y = font_size * 1.3 # إزاحة لأسفل (تم زيادتها قليلاً لخط Amiri)
 
                                         # تحديد النقطة التي سنبدأ عندها الكتابة العربية
                                         # x0 (البداية الأفقية)، y1 (نهاية النص الأصلي من الأسفل) + الإزاحة
@@ -159,6 +164,7 @@ def translate_with_red_arabic(input_path, output_path):
                                         
                                         # 4. كتابة النص العربي المترجم في ملف الـ PDF الأصلي
                                         # color=(0.8, 0, 0) هو تدرج من اللون الأحمر
+                                        # fontname="f0" و fontfile=FONT_FILE هما الطريقة لتعريف خط Unicode في fitz
                                         page.insert_text(arabic_start_point, 
                                                           fixed_arabic, 
                                                           fontsize=font_size * 0.9, # حجم الخط العربي أصغر قليلاً
@@ -166,15 +172,17 @@ def translate_with_red_arabic(input_path, output_path):
                                                           fontfile=FONT_FILE, 
                                                           color=(0.8, 0, 0)) # اللون الأحمر
                                 except Exception as t_err:
+                                    # تسجيل خطأ ترجمة كتلة محددة والاستمرار
                                     print(f"Error during translation/writing span: {t_err}")
-                                    continue # نكمل للسبان التالي
+                                    continue
         except Exception as p_err:
+            # تسجيل خطأ معالجة صفحة والاستمرار
             print(f"Error processing page: {p_err}")
-            continue # نكمل للصفحة التالية
+            continue
 
     # حفظ ملف الـ PDF الناتج
     try:
-        # استخدام deflate=True لتقليل حجم الملف
+        # استخدام deflate=True لتقليل حجم الملف (غير ضروري ولكنه مفضل)
         doc.save(output_path, deflate=True)
         doc.close()
     except Exception as e:
@@ -182,5 +190,5 @@ def translate_with_red_arabic(input_path, output_path):
 
 # --- تشغيل البوت ---
 print("البوت يعمل الآن... بانتظار الملفات.")
-# استخدام infinity_polling لضمان استمرار عمل البوت
+# استخدام infinity_polling لضمان استمرار عمل البوت وعدم توقفه عند الأخطاء البسيطة
 bot.infinity_polling()
