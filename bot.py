@@ -1,121 +1,78 @@
 import telebot
-import fitz  # PyMuPDF
-from deep_translator import GoogleTranslator
 import os
-import arabic_reshaper
-from bidi.algorithm import get_display
+# لا نحتاج لـ load_dotenv هنا لأن Railway يتكفل بالأمر
 
-# --- الإعدادات (سحب التوكن من Railway) ---
-# سيبحث البوت عن متغير باسم BOT_TOKEN في إعدادات Railway
-API_TOKEN = os.environ.get('BOT_TOKEN')
+# --- إعدادات الحماية والتوكن (من Railway) ---
 
-bot = telebot.TeleBot(API_TOKEN)
+# Railway سيقوم بتوفير هذا المتغير تلقائياً
+# تأكد أنك اسميت المتغير في إعدادات Railway بـ "TELEGRAM_BOT_TOKEN"
+BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 
-def fix_arabic(text):
-    """إصلاح الخط العربي للـ PDF"""
-    if not text: return ""
-    reshaped_text = arabic_reshaper.reshape(text)
-    return get_display(reshaped_text)
+# التحقق من أن التوكن تم تحميله بنجاح من بيئة Railway
+if BOT_TOKEN is None:
+    print("❌ خطأ: لم يتم العثور على 'TELEGRAM_BOT_TOKEN' في متغيرات بيئة Railway.")
+    # في بيئة الإنتاج، قد لا تريد عمل exit() مباشرة بل تسجيل الخطأ،
+    # ولكن للتأكد من الإعدادات الآن سنتركها.
+    exit()
 
-@bot.message_handler(commands=['start'])
+bot = telebot.TeleBot(BOT_TOKEN)
+
+# مجلد مؤقت لحفظ الملفات.Railway لديه نظام ملفات مؤقت ephemeral.
+# هذا المجلد سيعمل طالما أن الـ Service تعمل، لكنه سيحذف عند إعادة التشغيل (Redeploy).
+# هذا مناسب جداً لحالتنا حيث نريد معالجة الملف وإرساله ثم حذفه.
+UPLOAD_FOLDER = 'downloads'
+if not os.path.exists(UPLOAD_FOLDER):
+    os.makedirs(UPLOAD_FOLDER)
+
+# --- معالجة الرسائل ---
+
+# 1. الاستجابة للأمر /start
+@bot.message_handler(commands=['start', 'help'])
 def send_welcome(message):
-    user_name = message.from_user.first_name
-    bot.reply_to(message, f"أهلاً {user_name}! 🩺\nتم تحديث البوت لتصميم الملازم الاحترافية (نصوص وصور موسطة).")
+    welcome_text = (
+        "أهلاً بك في بوت ترجمة ملفات PDF الطبية! 🦷\n\n"
+        "أرسل لي ملف PDF، وسأقوم بترجمته إلى اللغة العربية والحفاظ على التنسيق قدر الإمكان.\n"
+        "ملاحظة: هذا البوت مصمم للمشاريع الدراسية ومشغل على Railway."
+    )
+    bot.reply_to(message, welcome_text)
 
+# 2. الاستجابة عند إرسال ملف (Document)
 @bot.message_handler(content_types=['document'])
 def handle_docs(message):
-    if not message.document.file_name.lower().endswith('.pdf'):
-        bot.reply_to(message, "يرجى إرسال ملف PDF فقط.")
-        return
-
-    msg = bot.reply_to(message, "⏳ جاري تصميم الملزمة (تنسيق موسط مثل الهرمونات)...")
+    chat_id = message.chat.id
+    src_filename = None # تعريف المتغير خارج الـ try لاستخدامه في الـ finally
 
     try:
-        user_id = message.from_user.id
         file_info = bot.get_file(message.document.file_id)
-        downloaded = bot.download_file(file_info.file_path)
         
-        input_pdf = f"in_{user_id}.pdf"
-        output_pdf = f"Professional_{message.document.file_name}"
+        # التحقق من أن الملف هو PDF
+        if not message.document.file_name.lower().endswith('.pdf'):
+            bot.reply_to(message, "⚠️ عذراً، هذا البوت يدعم ملفات PDF فقط.")
+            return
+
+        bot.reply_to(message, "⏳ جاري استلام الملف ومعالجته على السيرفر... يرجى الانتظار.")
+
+        # تحديد مسار حفظ الملف محلياً في مجلد downloads
+        downloaded_file = bot.download_file(file_info.file_path)
+        src_filename = os.path.join(UPLOAD_FOLDER, message.document.file_name)
         
-        with open(input_pdf, 'wb') as f: f.write(downloaded)
+        # حفظ الملف مؤقتاً على سيرفر Railway
+        with open(src_filename, 'wb') as new_file:
+            new_file.write(downloaded_file)
 
-        doc = fitz.open(input_pdf)
-        out_doc = fitz.open() 
-        font_path = "Amiri.ttf" # يجب أن يكون الملف مرفوعاً في GitHub
-
-        page_width = 595 # عرض صفحة A4 القياسي
+        # ---------------------------------------------------------
+        # (المرحلة القادمة: هنا سنضع كود pymupdf، deep-translator، fpdf2)
+        # ---------------------------------------------------------
         
-        for page in doc:
-            new_page = out_doc.new_page(width=page_width, height=842)
-            y_offset = 60
-            
-            # --- 1. معالجة وتوسيط الصور (مثل صفحة 5 في ملفك) ---
-            processed_images = []
-            for img in page.get_images(full=True):
-                try:
-                    xref = img[0]
-                    if xref in processed_images: continue
-                    base_image = doc.extract_image(xref)
-                    if base_image["width"] < 100: continue 
-
-                    img_name = f"tmp_{user_id}_{xref}.{base_image['ext']}"
-                    with open(img_name, "wb") as f: f.write(base_image["image"])
-                    
-                    # توسيط الصور
-                    img_w = 380 
-                    img_h = 240 
-                    img_x = (page_width - img_w) / 2 
-                    
-                    if y_offset > 500:
-                        new_page = out_doc.new_page(width=page_width, height=842)
-                        y_offset = 60
-                    
-                    img_rect = fitz.Rect(img_x, y_offset, img_x + img_w, y_offset + img_h)
-                    new_page.insert_image(img_rect, filename=img_name, keep_proportion=True)
-                    y_offset += img_h + 40
-                    processed_images.append(xref)
-                    os.remove(img_name)
-                except: pass
-
-            # --- 2. معالجة وتوسيط النصوص (نفس أسلوب الهرمونات) ---
-            text = page.get_text("text")
-            if text.strip():
-                lines = text.split('\n')
-                for line in lines:
-                    line = line.strip()
-                    if len(line) > 3:
-                        try:
-                            # ترجمة السطر
-                            translated = GoogleTranslator(source='en', target='ar').translate(line)
-                            fixed_ar = fix_arabic(translated)
-
-                            if y_offset > 780:
-                                new_page = out_doc.new_page(width=page_width, height=842)
-                                y_offset = 60
-
-                            # كتابة الإنجليزي (موسط)
-                            eng_rect = fitz.Rect(50, y_offset, 545, y_offset + 25)
-                            new_page.insert_textbox(eng_rect, line, fontsize=11.5, align=1, color=(0,0,0))
-                            y_offset += 22
-                            
-                            # كتابة العربي (موسط بلون أزرق طبي)
-                            ar_rect = fitz.Rect(50, y_offset, 545, y_offset + 25)
-                            new_page.insert_textbox(ar_rect, fixed_ar, fontsize=12, fontname="f0", fontfile=font_path, align=1, color=(0, 0.3, 0.6))
-                            y_offset += 45 # مسافة مريحة بين الفقرات
-                        except: continue
-
-        out_doc.save(output_pdf)
-        out_doc.close()
-        doc.close()
-
-        with open(output_pdf, 'rb') as f:
-            bot.send_document(message.chat.id, f, caption="✅ تم التصميم بنجاح لدفعة تمريض 2025")
-        
-        os.remove(input_pdf)
-        os.remove(output_pdf)
+        # مؤقتاً: سنخبر المستخدم بنجاح التحميل
+        bot.send_message(chat_id, f"✅ تم تحميل الملف '{message.document.file_name}' بنجاح على Railway.\nجاري العمل على إضافة ميزة الترجمة في الخطوة القادمة.")
 
     except Exception as e:
-        bot.reply_to(message, f"خطأ: تأكد من ضبط التوكن في Railway ووجود الخط Amiri.ttf")
+        bot.reply_to(message, f"❌ حدث خطأ أثناء معالجة الملف: {e}")
+    
+    # ننصح دائماً بحذف الملفات المؤقتة بعد الانتهاء، لكن سنتركها الآن
+    # حتى نتأكد من أن الكود يعمل، وفي المراحل القادمة سنضيف os.remove(src_filename)
 
-bot.polling()
+# --- تشغيل البوت ---
+print("البوت يعمل الآن على Railway... بانتظار الملفات.")
+bot.infinity_polling()
