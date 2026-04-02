@@ -5,22 +5,16 @@ import os
 import arabic_reshaper
 from bidi.algorithm import get_display
 
-# --- إعدادات الحماية والتوكن (من Railway) ---
-# ستقوم Railway بحقن هذا المتغير تلقائياً
-# تأكد من إضافة Variable في Railway باسم: TELEGRAM_BOT_TOKEN
-BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-
-if BOT_TOKEN is None:
-    print("❌ خطأ: لم يتم العثور على 'TELEGRAM_BOT_TOKEN' في متغيرات بيئة Railway.")
-    exit()
+# --- الإعدادات الأساسية (تم وضع التوكن مباشرة) ---
+# التوكن الخاص ببوتك
+BOT_TOKEN = '7924093069:AAGjjy7SomYnfUWSWu1xGY337aIYzT42tCA'
 
 bot = telebot.TeleBot(BOT_TOKEN)
 
-# مجلدات مؤقتة للملفات
+# مجلد مؤقت للملفات
 DOWNLOADS_DIR = 'downloads'
-for folder in [DOWNLOADS_DIR]:
-    if not os.path.exists(folder):
-        os.makedirs(folder)
+if not os.path.exists(DOWNLOADS_DIR):
+    os.makedirs(DOWNLOADS_DIR)
 
 # اسم ملف الخط العربي (يجب أن يكون مرفوعاً مع المشروع)
 # تأكد من رفع هذا الخط (.ttf) مع المشروع على GitHub
@@ -90,7 +84,7 @@ def handle_docs(message):
         # 2. تحديث الحالة وبدء الترجمة
         bot.edit_message_text("⏳ جاري قراءة الملف وترجمته وإنشاء ملف جديد... هذا قد يستغرق بعض الوقت.", chat_id, status_message.message_id)
         
-        # تشغيل دالة الترجمة المُعدَّلة (الشكل الأول - الترجمة تحت الخط بالأحمر)
+        # تشغيل دالة الترجمة (الترجمة تحت الخط بالأحمر)
         translate_with_red_arabic(src_filename, output_filename)
 
         # 3. إرسال الملف المترجم
@@ -109,7 +103,7 @@ def handle_docs(message):
         if output_filename and os.path.exists(output_filename):
             os.remove(output_filename)
 
-# --- دالة الترجمة (التعديل على "الشكل الأول" باستخدام PyMuPDF) ---
+# --- دالة الترجمة باستخدام PyMuPDF ---
 
 def translate_with_red_arabic(input_path, output_path):
     """
@@ -155,17 +149,15 @@ def translate_with_red_arabic(input_path, output_path):
                                     
                                     if fixed_arabic:
                                         # 3. حساب موقع الترجمة العربية
-                                        # الإزاحة العمودية للترجمة العربية (تكون تحت النص الأصلي)
-                                        # سنستخدم حجم الخط الأصلي كقاعدة للإزاحة
+                                        # سنستخدم حجم الخط الأصلي كقاعدة للإزاحة العمودية
                                         font_size = span["size"]
                                         offset_y = font_size * 1.2 # إزاحة بسيطة لأسفل
 
                                         # تحديد النقطة التي سنبدأ عندها الكتابة العربية
-                                        # x0 (البداية الأفقية)، y1 (نهاية النص الأصلي من الأسفل)
+                                        # x0 (البداية الأفقية)، y1 (نهاية النص الأصلي من الأسفل) + الإزاحة
                                         arabic_start_point = fitz.Point(rect[0], rect[1] + offset_y)
                                         
                                         # 4. كتابة النص العربي المترجم في ملف الـ PDF الأصلي
-                                        # fontname="f0" و fontfile=FONT_FILE هما الطريقة لتعريف خط Unicode في fitz
                                         # color=(0.8, 0, 0) هو تدرج من اللون الأحمر
                                         page.insert_text(arabic_start_point, 
                                                           fixed_arabic, 
@@ -180,14 +172,15 @@ def translate_with_red_arabic(input_path, output_path):
             print(f"Error processing page: {p_err}")
             continue # نكمل للصفحة التالية
 
-    # حفظ ملف الـ PDF الناتج (يحفظ الملف كملف جديد مع التعديلات)
+    # حفظ ملف الـ PDF الناتج
     try:
-        # استخدام defopt=True لتقليل حجم الملف (غير ضروري ولكنه مفضل)
+        # استخدام deflate=True لتقليل حجم الملف
         doc.save(output_path, deflate=True)
         doc.close()
     except Exception as e:
         raise Exception(f"خطأ في حفظ ملف PDF الناتج: {e}")
 
 # --- تشغيل البوت ---
-print("البوت يعمل الآن على Railway... بانتظار الملفات.")
+print("البوت يعمل الآن... بانتظار الملفات.")
+# استخدام infinity_polling لضمان استمرار عمل البوت
 bot.infinity_polling()
