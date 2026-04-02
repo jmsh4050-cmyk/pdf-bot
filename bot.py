@@ -14,9 +14,7 @@ user_data = {}
 
 def fix_arabic(text):
     if not text: return ""
-    # إعادة تشكيل الخط العربي
     reshaped_text = arabic_reshaper.reshape(text)
-    # تصحيح الاتجاه ليكون من اليمين لليسار
     return get_display(reshaped_text)
 
 def contains_arabic(text):
@@ -61,7 +59,7 @@ def process_style(call):
         run_highlight_style(call.message, file_info)
 
 # ==============================================================================
-# --- الشكل 1: المُصَحَّح (الصور مُصغّرة، النصوص بالمنتصف باستخدام textbox، تنسيق الخطوط الجديد) ---
+# --- الشكل 1: المُعدَّل (الصور مُصغّرة، أحجام الخطوط الجديدة، تضييق المساحات) ---
 # ==============================================================================
 def run_fpdf_style_fixed(message, file_info):
     user_id = message.chat.id
@@ -76,133 +74,103 @@ def run_fpdf_style_fixed(message, file_info):
         out_doc = fitz.open() 
         font_path = "Amiri.ttf" 
         
-        # تعريف ثوابت للصفحة
+        # تعريف ثابت لعرض الصفحة الافتراضي لـ A4 (595 نقطة)
         PAGE_WIDTH = 595
-        PAGE_HEIGHT = 842 # الارتفاع الافتراضي لـ A4
-
-        # تعريف متغيرات محددة لـ Textbox لتنفيذ المحاذاة للمنتصف
-        textbox_x_offset = 50 # الهامش الجانبي للـ textbox
-        textbox_width = PAGE_WIDTH - (2 * textbox_x_offset) # عرض صندوق النص
 
         for page in doc:
             new_page = out_doc.new_page()
-            y_offset = 40 
+            # تقليل الهامش العلوي الأولي لضغط الصفحة
+            y_offset = 35 
             
-            # 1. استخراج الصور ووضعها (تم تصغيرها وضغطها لتقليل الصفحات)
+            # 1. استخراج الصور ووضعها أولاً (تم تعديل الحجم والموقع لضغط الصفحة)
             processed_images = []
             for img in page.get_images(full=True):
                 try:
                     xref = img[0]
                     if xref in processed_images: continue
                     base_image = doc.extract_image(xref)
-                    # تجاهل الأيقونات الصغيرة جداً
-                    if base_image["width"] < 100: continue 
+                    if base_image["width"] < 120: continue 
 
                     img_name = f"tmp_{user_id}_{xref}.{base_image['ext']}"
                     with open(img_name, "wb") as f: f.write(base_image["image"])
                     
-                    # --- تعديل: تصغير حجم الصورة ---
-                    desired_img_width = 250
-                    desired_img_height = 150 
+                    # --- تعديل: تصغير حجم الصورة وضبط الموقع لتضييق المساحة ---
+                    desired_img_width = 280 # عرض أصغر قليلاً
+                    desired_img_height = 160 # ارتفاع أصغر قليلاً
 
-                    # حساب مركز الصفحة وضع الصورة فيه
+                    # حساب إحداثيات الصورة لتبدو في منتصف الصفحة أفقيًا
                     img_x = (PAGE_WIDTH - desired_img_width) / 2
                     
                     img_rect = fitz.Rect(img_x, y_offset, img_x + desired_img_width, y_offset + desired_img_height)
                     new_page.insert_image(img_rect, filename=img_name, keep_proportion=True)
                     
-                    # --- تعديل: تقليل الإزاحة بعد الصورة لضغط الصفحة ---
-                    y_offset += desired_img_height + 15 
+                    # --- تعديل: تقليل الإزاحة بعد الصورة لضغط المساحات ---
+                    y_offset += desired_img_height + 15 # مسافة صغيرة جداً بعد الصورة
                     processed_images.append(xref)
                     os.remove(img_name)
                 except: pass
 
-            # 2. إضافة النصوص المترجمة (بالمنتصف والتنسيق الجديد باستخدام insert_textbox)
-            # تم استخدام "dict" بدلاً من "text" للوصول لحجم الخط الأصلي
-            text_blocks = page.get_text("dict")["blocks"]
-            if text_blocks:
-                for block in text_blocks:
+            # 2. إضافة النصوص المترجمة بأحجام الخطوط الجديدة وتضييق المسافات
+            # نستخدم "dict" بدلاً من "text" للحصول على معلومات الموقع وحجم الخط الأصلي
+            text_dict = page.get_text("dict")
+            if text_dict["blocks"]:
+                for block in text_dict["blocks"]:
                     if "lines" in block:
                         for line in block["lines"]:
                             clean_line = ""
-                            # تجميع النص من السبانز (spans)
+                            # تجميع النص من السبانز (spans) للحصول على السطر الكامل
                             for span in line["spans"]:
                                 clean_line += span["text"]
                             
                             clean_line = clean_line.strip()
-                            if len(clean_line) > 1:
+                            if len(clean_line) > 1: # معالجة السطور التي تحتوي على أكثر من حرف واحد
                                 try:
-                                    # ترجمة السطر
                                     translated = GoogleTranslator(source='en', target='ar').translate(clean_line)
                                     fixed_ar = fix_arabic(translated)
                                     
-                                    # التحقق من المساحة العمودية وإضافة صفحة جديدة إذا لزم الأمر
-                                    # زدنا الحد قليلاً لأن insert_textbox تتطلب مساحة داخلية
-                                    if y_offset > 800: 
+                                    # التحقق من المساحة العمودية المتبقية وإضافة صفحة جديدة إذا لزم الأمر
+                                    # زدنا الحد قليلاً لاستغلال الصفحة بشكل أكبر (810 بدلاً من 750)
+                                    if y_offset > 810: 
                                         new_page = out_doc.new_page()
-                                        y_offset = 40
+                                        y_offset = 35
 
-                                    # --- تعديل: تمييز الخطوط بناءً على حجم الخط الأصلي ---
-                                    # الحصول على حجم الخط الأصلي لأول سبان في السطر
-                                    original_font_size = line["spans"][0]["size"]
+                                    # --- تعديل: تحديد حجم الخط بناءً على طول السطر (تمييز العناوين) ---
+                                    # سنعتبر السطور القصيرة جداً (أقل من 20 حرف) عناوين رئيسية
+                                    is_main_title = len(clean_line) < 20
+                                    # سنعتبر السطور المتوسطة الطول (بين 20 و 40 حرف) عناوين فرعية
+                                    is_sub_title = 20 <= len(clean_line) < 40
                                     
-                                    if original_font_size > 22: # عناوين رئيسية جداً
-                                        eng_size = 13
-                                        ar_size = 13
-                                        # يمكن زيادة مسافة الارتفاع للعناوين
-                                        text_height = 20
-                                        space_after = 28
-                                    elif original_font_size > 14: # عناوين فرعية
-                                        eng_size = 12
-                                        ar_size = 12
-                                        text_height = 18
-                                        space_after = 24
-                                    else: # نص عادي
-                                        eng_size = 10
-                                        ar_size = 10
-                                        text_height = 14
-                                        space_after = 20
-                                    
-                                    # --- استخدام insert_textbox لتنفيذ المحاذاة للمنتصف ---
-                                    
-                                    # 1. تحديد مستطيل النص الإنجليزي
-                                    eng_rect = fitz.Rect(textbox_x_offset, y_offset, textbox_x_offset + textbox_width, y_offset + text_height)
-                                    # align=fitz.TEXT_ALIGN_CENTER هي القيمة الصحيحة لـ textbox المحاذي للمنتصف
-                                    # نستخدم المعامل align داخل insert_textbox وليس insert_text
-                                    new_page.insert_textbox(eng_rect, clean_line, fontsize=eng_size, color=(0,0,0), align=fitz.TEXT_ALIGN_CENTER)
-                                    y_offset += text_height + 2 # إزاحة بسيطة قبل العربي
-
-                                    # 2. تحديد مستطيل النص العربي
-                                    ar_rect = fitz.Rect(textbox_x_offset, y_offset, textbox_x_offset + textbox_width, y_offset + text_height)
-                                    new_page.insert_textbox(ar_rect, fixed_ar, fontsize=ar_size, fontname="f0", fontfile=font_path, color=(0.7, 0, 0), align=fitz.TEXT_ALIGN_CENTER)
-                                    
-                                    # الإزاحة العمودية بعد السطر المترجم
-                                    y_offset += text_height + space_after - text_height - 2 # تعديل الإزاحة لتناسب space_after
+                                    if is_main_title:
+                                        # عنوان رئيسي: حجم 11، ثخين (بافتراض Amiri-Bold.ttf موجود، أو نستخدم الخيار الافتراضي لـ fitz)
+                                        # سنستخدم خط "f1" (الثخين) المدمج في fitz أو Amiri إذا كان يدعمه
+                                        new_page.insert_text((50, y_offset), clean_line, fontsize=11, color=(0,0,0))
+                                        y_offset += 16 # مسافة عمودية أضيق بعد العنوان
+                                        new_page.insert_text((50, y_offset), fixed_ar, fontsize=11, fontname="f0", fontfile=font_path, color=(0.7, 0, 0))
+                                        y_offset += 20 # مسافة بعد العنوان المترجم
+                                    elif is_sub_title:
+                                        # عنوان فرعي: حجم 9، ثخين
+                                        new_page.insert_text((50, y_offset), clean_line, fontsize=9, color=(0,0,0))
+                                        y_offset += 14
+                                        new_page.insert_text((50, y_offset), fixed_ar, fontsize=9, fontname="f0", fontfile=font_path, color=(0.7, 0, 0))
+                                        y_offset += 18
+                                    else:
+                                        # نص عادي: حجم 8 للكل
+                                        new_page.insert_text((50, y_offset), clean_line, fontsize=8, color=(0,0,0))
+                                        y_offset += 12 # مسافة أضيق للسطور العادية لضغط الصفحة
+                                        new_page.insert_text((50, y_offset), fixed_ar, fontsize=8, fontname="f0", fontfile=font_path, color=(0.7, 0, 0))
+                                        y_offset += 16 # مسافة بعد الفقرة المترجمة
 
                                 except Exception as e: 
                                     print(f"Error in line processing: {e}")
-                                    # --- تعديل: كتابة النص الإنجليزي باللون الرمادي في حال فشل الترجمة باستخدام textbox ---
-                                    # زدنا المساحة قليلاً لرسالة الخطأ
-                                    error_rect = fitz.Rect(textbox_x_offset, y_offset, textbox_x_offset + textbox_width, y_offset + 16)
-                                    new_page.insert_textbox(error_rect, f"[Trans. Error]: {clean_line}", fontsize=10, color=(0.8, 0.8, 0.8), align=fitz.TEXT_ALIGN_CENTER)
-                                    y_offset += 16 + 18
-                                    continue
-            else:
-                # إذا لم يتم العثور على أي كتل نصوص (السبب الأول المحتمل - PDF عبارة عن صور)
-                print(f"Warning: No text blocks found on page {page.number}.")
-                # يمكنك اختيار إبلاغ المستخدم بأن الصفحة قد تحتوي على صور فقط.
+                                    continue # الاستمرار في معالجة السطر التالي في حال حدوث خطأ
 
         out_doc.save(output_pdf)
         out_doc.close()
         doc.close()
         send_and_clean(message, output_pdf, input_pdf)
-    except Exception as e: bot.reply_to(message, f"خطأ في الشكل الأول المُصَحَّح: {e}")
+    except Exception as e: bot.reply_to(message, f"خطأ في الشكل الأول المُعدَّل: {e}")
 
-# ==============================================================================
-# --- الأشكال الأخرى والوظائف المساعدة تبقى كما هي دون تغيير ---
-# ==============================================================================
-
-# --- الشكل 2: الحقن (الترجمة تحت الإنجليزي) ---
+# --- الشكل 2: الحقن (يبقى كما هو) ---
 def run_inject_style(message, file_info):
     # يبقى كما هو في الكود الأصلي
     user_id = message.chat.id
@@ -239,6 +207,7 @@ def run_inject_style(message, file_info):
         send_and_clean(message, output_pdf, input_pdf)
     except Exception as e: bot.reply_to(message, f"خطأ: {e}")
 
+# --- الشكل 3: الهايلايت (يبقى كما هو) ---
 def run_highlight_style(message, file_info):
     # يبقى كما هو في الكود الأصلي
     # كود الهايلايت يبقى كما هو مع تكبير الخط العربي
@@ -273,6 +242,7 @@ def run_highlight_style(message, file_info):
         send_and_clean(message, output_pdf, input_pdf)
     except Exception as e: bot.reply_to(message, f"خطأ: {e}")
 
+# --- دالة الإرسال والتنظيف (تبقى كما هو) ---
 def send_and_clean(message, out, inp):
     # يبقى كما هو في الكود الأصلي
     if os.path.exists(out):
@@ -281,5 +251,6 @@ def send_and_clean(message, out, inp):
         os.remove(out)
     if os.path.exists(inp): os.remove(inp)
 
+# --- تشغيل البوت ---
 bot.polling()
-                            
+        
