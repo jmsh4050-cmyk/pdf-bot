@@ -14,7 +14,9 @@ user_data = {}
 
 def fix_arabic(text):
     if not text: return ""
+    # إعادة تشكيل الخط العربي
     reshaped_text = arabic_reshaper.reshape(text)
+    # تصحيح الاتجاه ليكون من اليمين لليسار
     return get_display(reshaped_text)
 
 def contains_arabic(text):
@@ -59,7 +61,7 @@ def process_style(call):
         run_highlight_style(call.message, file_info)
 
 # ==============================================================================
-# --- الشكل 1: المُعدَّل (الصور مُصغّرة، النصوص بالمنتصف، تنسيق الخطوط الجديد) ---
+# --- الشكل 1: المُعدَّل (علاج مشكلة الصفحات الفارغة، تحسين تمييز العناوين) ---
 # ==============================================================================
 def run_fpdf_style_fixed(message, file_info):
     user_id = message.chat.id
@@ -74,12 +76,12 @@ def run_fpdf_style_fixed(message, file_info):
         out_doc = fitz.open() 
         font_path = "Amiri.ttf" 
         
-        # تعريف ثابت لعرض الصفحة الافتراضي (A4 هو 595 نقطة)
+        # تعريف ثابت لعرض الصفحة الافتراضي
         PAGE_WIDTH = 595
 
         for page in doc:
             new_page = out_doc.new_page()
-            y_offset = 40 # تقليل الهامش العلوي قليلاً
+            y_offset = 40 
             
             # 1. استخراج الصور ووضعها (تم تصغيرها وضغطها لتقليل الصفحات)
             processed_images = []
@@ -95,9 +97,8 @@ def run_fpdf_style_fixed(message, file_info):
                     with open(img_name, "wb") as f: f.write(base_image["image"])
                     
                     # --- تعديل: تصغير حجم الصورة ---
-                    # العرض المقترح للصورة ليكون أصغر (مثلاً 250 نقطة بدلاً من 430)
                     desired_img_width = 250
-                    desired_img_height = 150 # ارتفاع أصغر أيضاً
+                    desired_img_height = 150 
 
                     # حساب مركز الصفحة وضع الصورة فيه
                     img_x = (PAGE_WIDTH - desired_img_width) / 2
@@ -106,62 +107,71 @@ def run_fpdf_style_fixed(message, file_info):
                     new_page.insert_image(img_rect, filename=img_name, keep_proportion=True)
                     
                     # --- تعديل: تقليل الإزاحة بعد الصورة لضغط الصفحة ---
-                    y_offset += desired_img_height + 15 # مسافة صغيرة بعد الصورة
+                    y_offset += desired_img_height + 15 
                     processed_images.append(xref)
                     os.remove(img_name)
                 except: pass
 
             # 2. إضافة النصوص المترجمة (بالمنتصف والتنسيق الجديد)
-            text = page.get_text("text")
-            if text.strip():
-                lines = text.split('\n')
-                for line in lines:
-                    clean_line = line.strip()
-                    if len(clean_line) > 1: # معالجة حتى السطور القصيرة
-                        try:
-                            # ترجمة السطر
-                            translated = GoogleTranslator(source='en', target='ar').translate(clean_line)
-                            fixed_ar = fix_arabic(translated)
+            # تم استخدام "dict" بدلاً من "text" للوصول لحجم الخط الأصلي
+            text_blocks = page.get_text("dict")["blocks"]
+            if text_blocks:
+                for block in text_blocks:
+                    if "lines" in block:
+                        for line in block["lines"]:
+                            clean_line = ""
+                            # تجميع النص من السبانز (spans)
+                            for span in line["spans"]:
+                                clean_line += span["text"]
                             
-                            # التحقق من المساحة العمودية وإضافة صفحة جديدة إذا لزم الأمر
-                            if y_offset > 780: # زيادة طفيفة في استغلال الصفحة
-                                new_page = out_doc.new_page()
-                                y_offset = 40
+                            clean_line = clean_line.strip()
+                            if len(clean_line) > 1:
+                                try:
+                                    # ترجمة السطر
+                                    translated = GoogleTranslator(source='en', target='ar').translate(clean_line)
+                                    fixed_ar = fix_arabic(translated)
+                                    
+                                    # التحقق من المساحة العمودية وإضافة صفحة جديدة إذا لزم الأمر
+                                    if y_offset > 780: 
+                                        new_page = out_doc.new_page()
+                                        y_offset = 40
 
-                            # --- تعديل: تحديد حجم الخط والثخانة (Bold) بناءً على طول السطر ---
-                            # سنعتبر السطور القصيرة جداً (أقل من 25 حرف) عناوين
-                            is_title = len(clean_line) < 25
-                            
-                            if is_title:
-                                # عناوين: حجم 13، ثخين (بافتراض Amiri-Bold.ttf موجود، أو نستخدم الخيار الافتراضي)
-                                # بما أنه لم يذكر ملف Amiri-Bold.ttf، سنستخدم fontname="f1" ونأمل أن fitz يتعامل معها
-                                # أو نكتفي بتغيير الحجم. هنا سنستخدم 'f0' (العادي) ونغير الحجم فقط لضمان التشغيل.
-                                eng_size = 13
-                                ar_size = 13
-                                # للكتابة بالمنتصف نستخدم point بـ x محسوبة، أو نستخدم insert_textbox.
-                                # insert_text أسهل للمنتصف باستخدام خيار align.
-                                new_page.insert_text((PAGE_WIDTH/2, y_offset), clean_line, fontsize=eng_size, color=(0,0,0), align=fitz.TEXT_ALIGN_CENTER)
-                                y_offset += 18
-                                new_page.insert_text((PAGE_WIDTH/2, y_offset), fixed_ar, fontsize=ar_size, fontname="f0", fontfile=font_path, color=(0.7, 0, 0), align=fitz.TEXT_ALIGN_CENTER)
-                                y_offset += 25 # مسافة بعد العنوان
-                            else:
-                                # سطر عادي: حجم 10 للكل
-                                eng_size = 10
-                                ar_size = 10
-                                new_page.insert_text((PAGE_WIDTH/2, y_offset), clean_line, fontsize=eng_size, color=(0,0,0), align=fitz.TEXT_ALIGN_CENTER)
-                                y_offset += 14 # مسافة أضيق للسطور العادية
-                                new_page.insert_text((PAGE_WIDTH/2, y_offset), fixed_ar, fontsize=ar_size, fontname="f0", fontfile=font_path, color=(0.7, 0, 0), align=fitz.TEXT_ALIGN_CENTER)
-                                y_offset += 20 # مسافة بعد الفقرة
+                                    # --- تعديل: تمييز الخطوط بناءً على حجم الخط الأصلي ---
+                                    # الحصول على حجم الخط الأصلي لأول سبان في السطر
+                                    original_font_size = line["spans"][0]["size"]
+                                    
+                                    if original_font_size > 22: # عناوين رئيسية جداً (مثل HORMONES)
+                                        eng_size = 13
+                                        ar_size = 13
+                                    elif original_font_size > 14: # عناوين فرعية
+                                        eng_size = 12
+                                        ar_size = 12
+                                    else: # نص عادي
+                                        eng_size = 10
+                                        ar_size = 10
+                                    
+                                    # كتابة النصوص بالمنتصف
+                                    new_page.insert_text((PAGE_WIDTH/2, y_offset), clean_line, fontsize=eng_size, color=(0,0,0), align=fitz.TEXT_ALIGN_CENTER)
+                                    y_offset += 16
+                                    new_page.insert_text((PAGE_WIDTH/2, y_offset), fixed_ar, fontsize=ar_size, fontname="f0", fontfile=font_path, color=(0.7, 0, 0), align=fitz.TEXT_ALIGN_CENTER)
+                                    y_offset += 22
 
-                        except Exception as e: 
-                            print(f"Error in line processing: {e}")
-                            continue
+                                except Exception as e: 
+                                    print(f"Error in line processing: {e}")
+                                    # --- تعديل: كتابة النص الإنجليزي باللون الرمادي في حال فشل الترجمة ---
+                                    new_page.insert_text((PAGE_WIDTH/2, y_offset), f"[Trans. Error]: {clean_line}", fontsize=10, color=(0.8, 0.8, 0.8), align=fitz.TEXT_ALIGN_CENTER)
+                                    y_offset += 18
+                                    continue
+            else:
+                # إذا لم يتم العثور على أي كتل نصوص (السبب الأول المحتمل)
+                print(f"Warning: No text blocks found on page {page.number}.")
+                # يمكنك اختيار إبلاغ المستخدم بأن الصفحة قد تحتوي على صور فقط.
 
         out_doc.save(output_pdf)
         out_doc.close()
         doc.close()
         send_and_clean(message, output_pdf, input_pdf)
-    except Exception as e: bot.reply_to(message, f"خطأ في الشكل الأول: {e}")
+    except Exception as e: bot.reply_to(message, f"خطأ في الشكل الأول المُعدّل: {e}")
 
 # ==============================================================================
 # --- الأشكال الأخرى والوظائف المساعدة تبقى كما هي دون تغيير ---
@@ -247,4 +257,3 @@ def send_and_clean(message, out, inp):
     if os.path.exists(inp): os.remove(inp)
 
 bot.polling()
-        
