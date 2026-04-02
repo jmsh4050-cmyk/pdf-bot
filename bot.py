@@ -61,7 +61,7 @@ def process_style(call):
         run_highlight_style(call.message, file_info)
 
 # ==============================================================================
-# --- الشكل 1: المُعدَّل (علاج مشكلة الصفحات الفارغة، تحسين تمييز العناوين) ---
+# --- الشكل 1: المُصَحَّح (الصور مُصغّرة، النصوص بالمنتصف باستخدام textbox، تنسيق الخطوط الجديد) ---
 # ==============================================================================
 def run_fpdf_style_fixed(message, file_info):
     user_id = message.chat.id
@@ -76,8 +76,13 @@ def run_fpdf_style_fixed(message, file_info):
         out_doc = fitz.open() 
         font_path = "Amiri.ttf" 
         
-        # تعريف ثابت لعرض الصفحة الافتراضي
+        # تعريف ثوابت للصفحة
         PAGE_WIDTH = 595
+        PAGE_HEIGHT = 842 # الارتفاع الافتراضي لـ A4
+
+        # تعريف متغيرات محددة لـ Textbox لتنفيذ المحاذاة للمنتصف
+        textbox_x_offset = 50 # الهامش الجانبي للـ textbox
+        textbox_width = PAGE_WIDTH - (2 * textbox_x_offset) # عرض صندوق النص
 
         for page in doc:
             new_page = out_doc.new_page()
@@ -112,7 +117,7 @@ def run_fpdf_style_fixed(message, file_info):
                     os.remove(img_name)
                 except: pass
 
-            # 2. إضافة النصوص المترجمة (بالمنتصف والتنسيق الجديد)
+            # 2. إضافة النصوص المترجمة (بالمنتصف والتنسيق الجديد باستخدام insert_textbox)
             # تم استخدام "dict" بدلاً من "text" للوصول لحجم الخط الأصلي
             text_blocks = page.get_text("dict")["blocks"]
             if text_blocks:
@@ -132,7 +137,8 @@ def run_fpdf_style_fixed(message, file_info):
                                     fixed_ar = fix_arabic(translated)
                                     
                                     # التحقق من المساحة العمودية وإضافة صفحة جديدة إذا لزم الأمر
-                                    if y_offset > 780: 
+                                    # زدنا الحد قليلاً لأن insert_textbox تتطلب مساحة داخلية
+                                    if y_offset > 800: 
                                         new_page = out_doc.new_page()
                                         y_offset = 40
 
@@ -140,30 +146,49 @@ def run_fpdf_style_fixed(message, file_info):
                                     # الحصول على حجم الخط الأصلي لأول سبان في السطر
                                     original_font_size = line["spans"][0]["size"]
                                     
-                                    if original_font_size > 22: # عناوين رئيسية جداً (مثل HORMONES)
+                                    if original_font_size > 22: # عناوين رئيسية جداً
                                         eng_size = 13
                                         ar_size = 13
+                                        # يمكن زيادة مسافة الارتفاع للعناوين
+                                        text_height = 20
+                                        space_after = 28
                                     elif original_font_size > 14: # عناوين فرعية
                                         eng_size = 12
                                         ar_size = 12
+                                        text_height = 18
+                                        space_after = 24
                                     else: # نص عادي
                                         eng_size = 10
                                         ar_size = 10
+                                        text_height = 14
+                                        space_after = 20
                                     
-                                    # كتابة النصوص بالمنتصف
-                                    new_page.insert_text((PAGE_WIDTH/2, y_offset), clean_line, fontsize=eng_size, color=(0,0,0), align=fitz.TEXT_ALIGN_CENTER)
-                                    y_offset += 16
-                                    new_page.insert_text((PAGE_WIDTH/2, y_offset), fixed_ar, fontsize=ar_size, fontname="f0", fontfile=font_path, color=(0.7, 0, 0), align=fitz.TEXT_ALIGN_CENTER)
-                                    y_offset += 22
+                                    # --- استخدام insert_textbox لتنفيذ المحاذاة للمنتصف ---
+                                    
+                                    # 1. تحديد مستطيل النص الإنجليزي
+                                    eng_rect = fitz.Rect(textbox_x_offset, y_offset, textbox_x_offset + textbox_width, y_offset + text_height)
+                                    # align=fitz.TEXT_ALIGN_CENTER هي القيمة الصحيحة لـ textbox المحاذي للمنتصف
+                                    # نستخدم المعامل align داخل insert_textbox وليس insert_text
+                                    new_page.insert_textbox(eng_rect, clean_line, fontsize=eng_size, color=(0,0,0), align=fitz.TEXT_ALIGN_CENTER)
+                                    y_offset += text_height + 2 # إزاحة بسيطة قبل العربي
+
+                                    # 2. تحديد مستطيل النص العربي
+                                    ar_rect = fitz.Rect(textbox_x_offset, y_offset, textbox_x_offset + textbox_width, y_offset + text_height)
+                                    new_page.insert_textbox(ar_rect, fixed_ar, fontsize=ar_size, fontname="f0", fontfile=font_path, color=(0.7, 0, 0), align=fitz.TEXT_ALIGN_CENTER)
+                                    
+                                    # الإزاحة العمودية بعد السطر المترجم
+                                    y_offset += text_height + space_after - text_height - 2 # تعديل الإزاحة لتناسب space_after
 
                                 except Exception as e: 
                                     print(f"Error in line processing: {e}")
-                                    # --- تعديل: كتابة النص الإنجليزي باللون الرمادي في حال فشل الترجمة ---
-                                    new_page.insert_text((PAGE_WIDTH/2, y_offset), f"[Trans. Error]: {clean_line}", fontsize=10, color=(0.8, 0.8, 0.8), align=fitz.TEXT_ALIGN_CENTER)
-                                    y_offset += 18
+                                    # --- تعديل: كتابة النص الإنجليزي باللون الرمادي في حال فشل الترجمة باستخدام textbox ---
+                                    # زدنا المساحة قليلاً لرسالة الخطأ
+                                    error_rect = fitz.Rect(textbox_x_offset, y_offset, textbox_x_offset + textbox_width, y_offset + 16)
+                                    new_page.insert_textbox(error_rect, f"[Trans. Error]: {clean_line}", fontsize=10, color=(0.8, 0.8, 0.8), align=fitz.TEXT_ALIGN_CENTER)
+                                    y_offset += 16 + 18
                                     continue
             else:
-                # إذا لم يتم العثور على أي كتل نصوص (السبب الأول المحتمل)
+                # إذا لم يتم العثور على أي كتل نصوص (السبب الأول المحتمل - PDF عبارة عن صور)
                 print(f"Warning: No text blocks found on page {page.number}.")
                 # يمكنك اختيار إبلاغ المستخدم بأن الصفحة قد تحتوي على صور فقط.
 
@@ -171,7 +196,7 @@ def run_fpdf_style_fixed(message, file_info):
         out_doc.close()
         doc.close()
         send_and_clean(message, output_pdf, input_pdf)
-    except Exception as e: bot.reply_to(message, f"خطأ في الشكل الأول المُعدّل: {e}")
+    except Exception as e: bot.reply_to(message, f"خطأ في الشكل الأول المُصَحَّح: {e}")
 
 # ==============================================================================
 # --- الأشكال الأخرى والوظائف المساعدة تبقى كما هي دون تغيير ---
@@ -257,3 +282,4 @@ def send_and_clean(message, out, inp):
     if os.path.exists(inp): os.remove(inp)
 
 bot.polling()
+                            
