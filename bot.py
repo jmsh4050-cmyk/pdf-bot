@@ -16,91 +16,97 @@ def fix_arabic(text):
 
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
-    bot.reply_to(message, "أهلاً بك في بوت إعادة تنسيق الملازم 📚\nأرسل ملف الـ PDF وسأقوم ببنائه من جديد مع الترجمة.")
+    bot.reply_to(message, "مرحباً! أرسل الملزمة وسأقوم بإعادة تصميمها مع تكبير العناوين (16) في مواقعها الأصلية ✅")
 
 @bot.message_handler(content_types=['document'])
 def handle_pdf(message):
     if not message.document.file_name.lower().endswith('.pdf'):
-        bot.reply_to(message, "يرجى إرسال ملف PDF فقط.")
+        bot.reply_to(message, "يرجى إرسال ملف PDF.")
         return
 
     file_info = bot.get_file(message.document.file_id)
     downloaded_file = bot.download_file(file_info.file_path)
     
-    input_path = f"temp_in_{message.chat.id}.pdf"
-    output_path = f"New_Format_{message.document.file_name}"
+    input_path = f"in_{message.chat.id}.pdf"
+    output_path = f"Fixed_Mlazma_{message.document.file_name}"
     
     with open(input_path, 'wb') as f:
         f.write(downloaded_file)
 
-    msg = bot.reply_to(message, "⏳ جاري إعادة بناء الملزمة وترجمتها... قد يستغرق ذلك دقيقة حسب حجم الملف.")
+    bot.reply_to(message, "⏳ جاري إعادة الهيكلة.. العناوين ستكون بحجم 16 وفي مكانها الأصلي.")
     
     try:
         doc = fitz.open(input_path)
         new_doc = fitz.open()
-        font_path = "Amiri.ttf" # ضروري جداً يكون الملف موجود
+        font_path = "Amiri.ttf" 
 
         for page in doc:
-            new_page = new_doc.new_page() # صفحة بيضاء جديدة
-            y_offset = 50 # البداية من الأعلى
+            # إنشاء صفحة جديدة بنفس أبعاد الصفحة الأصلية تماماً
+            new_page = new_doc.new_page(width=page.rect.width, height=page.rect.height)
             
-            # 1. جلب الصور ووضعها في بداية الصفحة الجديدة
-            images = page.get_images(full=True)
-            for img in images:
-                xref = img[0]
-                base_image = doc.extract_image(xref)
-                if base_image["width"] < 100: continue
-                
-                # وضع الصورة بشكل ممركز (Center)
-                img_rect = fitz.Rect(100, y_offset, 500, y_offset + 220) 
-                new_page.insert_image(img_rect, stream=base_image["image"])
-                y_offset += 240 
-                break # نأخذ صورة واحدة رئيسية لكل صفحة للحفاظ على التنسيق
+            # 1. نقل الصور لمواقعها الأصلية
+            image_list = page.get_images(full=True)
+            for img_info in page.get_image_info():
+                try:
+                    img_rect = img_info["bbox"]
+                    xref = img_info["xref"]
+                    base_image = doc.extract_image(xref)
+                    new_page.insert_image(img_rect, stream=base_image["image"])
+                except: pass
 
-            # 2. جلب النصوص وترجمتها وتنسيقها (إنجليزي وتحته عربي مباشرة)
-            text_blocks = page.get_text("blocks")
-            for block in text_blocks:
-                line_text = block[4].replace('\n', ' ').strip()
-                
-                if len(line_text) > 3:
-                    try:
-                        # ترجمة السطر مع حماية من الأخطاء
-                        translated = GoogleTranslator(source='en', target='ar').translate(line_text)
-                        fixed_ar = fix_arabic(translated)
+            # 2. معالجة النصوص (إبقاء المواقع الأصلية وتكبير العناوين)
+            blocks = page.get_text("dict")["blocks"]
+            for b in blocks:
+                if "lines" in b:
+                    for l in b["lines"]:
+                        for s in l["spans"]:
+                            txt = s["text"].strip()
+                            if len(txt) < 2: continue
+                            
+                            # إحداثيات النص الأصلي
+                            origin_x, origin_y = s["origin"]
+                            original_size = s["size"]
+                            
+                            try:
+                                # ترجمة النص
+                                trans = GoogleTranslator(source='en', target='ar').translate(txt)
+                                fixed_ar = fix_arabic(trans)
 
-                        # إذا اقتربنا من نهاية الصفحة، نفتح صفحة جديدة
-                        if y_offset > 760:
-                            new_page = new_doc.new_page()
-                            y_offset = 50
+                                # --- تحديد العنوان (إذا كان حجم الخط الأصلي كبيراً أو النص قصيراً) ---
+                                is_title = original_size > 13 or len(txt) < 30
+                                
+                                if is_title:
+                                    # العنوان: حجم 16، لون أحمر، في موقعه الأصلي
+                                    current_size = 16
+                                    color = (0.8, 0, 0) # أحمر داكن
+                                else:
+                                    # النص العادي: حجم 14
+                                    current_size = 14
+                                    color = (0, 0, 0) # أسود
 
-                        # تحديد إذا كان النص عنوان (بناءً على طول السطر)
-                        is_title = len(line_text) < 30
-                        f_size = 15 # حجم الخط الذي طلبته
-
-                        # كتابة الإنجليزي (لون أحمر إذا كان عنوان، وأسود إذا نص عادي)
-                        color_en = (0.8, 0, 0) if is_title else (0, 0, 0)
-                        new_page.insert_text((50, y_offset), line_text, fontsize=f_size, color=color_en)
-                        y_offset += 22 # مسافة للسطر العربي
-                        
-                        # كتابة العربي (دائماً بلون مختلف قليلاً لتمييزه)
-                        new_page.insert_text((50, y_offset), fixed_ar, fontsize=f_size, fontname="f0", fontfile=font_path, color=(0.6, 0, 0))
-                        y_offset += 35 # مسافة قبل الفقرة التالية
-                        
-                    except Exception as e:
-                        print(f"Error in translation: {e}")
-                        continue
+                                # كتابة النص الإنجليزي في موقعه
+                                new_page.insert_text((origin_x, origin_y), txt, fontsize=current_size, color=color)
+                                
+                                # كتابة الترجمة العربية تحتها مباشرة (إزاحة بسيطة لأسفل)
+                                new_page.insert_text((origin_x, origin_y + current_size + 2), 
+                                                   fixed_ar, 
+                                                   fontsize=current_size - 1, 
+                                                   fontname="f0", 
+                                                   fontfile=font_path, 
+                                                   color=(0.6, 0, 0)) # ترجمة بلون مميز
+                            except:
+                                continue
 
         new_doc.save(output_path)
         new_doc.close()
         doc.close()
 
         with open(output_path, 'rb') as f:
-            bot.send_document(message.chat.id, f, caption="✅ تم إعادة تنسيق وترجمة الملزمة بنجاح!")
+            bot.send_document(message.chat.id, f, caption="✅ اكتملت الملزمة المنسقة!")
             
     except Exception as e:
-        bot.reply_to(message, f"❌ حدث خطأ تقني: {str(e)}")
+        bot.reply_to(message, f"خطأ: {str(e)}")
     
-    # حذف الملفات المؤقتة لتوفير المساحة
     if os.path.exists(input_path): os.remove(input_path)
     if os.path.exists(output_path): os.remove(output_path)
 
