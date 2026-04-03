@@ -1,5 +1,5 @@
 pyTelegramBotAPI
-pymupdf
+PyMuPDF
 deep-translator
 arabic-reshaper
 python-bidi
