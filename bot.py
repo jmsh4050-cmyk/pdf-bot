@@ -16,7 +16,7 @@ def fix_arabic(text):
 
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
-    bot.reply_to(message, "تم تحديث الألوان: الإنجليزي (أسود) ⚫ والعربي (أحمر) 🔴\nأرسل الملزمة الآن.")
+    bot.reply_to(message, "تم زيادة المسافات بين الأسطر لراحة العين ✅\nأرسل الملزمة الآن.")
 
 @bot.message_handler(content_types=['document'])
 def handle_pdf(message):
@@ -28,7 +28,7 @@ def handle_pdf(message):
     downloaded_file = bot.download_file(file_info.file_path)
     
     input_path = f"in_{message.chat.id}.pdf"
-    output_path = f"Mlazma_Colored_{message.document.file_name}"
+    output_path = f"Mlazma_Spaced_{message.document.file_name}"
     
     with open(input_path, 'wb') as f:
         f.write(downloaded_file)
@@ -69,24 +69,24 @@ def handle_pdf(message):
                                 else:
                                     current_size = 14
 
-                                # 1. كتابة النص الإنجليزي (أسود دائماً)
+                                # 1. كتابة النص الإنجليزي (أسود)
                                 new_page.insert_text((origin_x, origin_y), txt, fontsize=current_size, color=(0, 0, 0))
                                 
-                                # 2. كتابة النص العربي (أحمر دائماً)
-                                # الإزاحة بمقدار حجم الخط + 2 بكسل لضمان عدم التداخل
-                                new_page.insert_text((origin_x, origin_y + current_size + 2), 
+                                # 2. كتابة النص العربي (أحمر) 
+                                # زدنا الإزاحة هنا لتكون المسافة أكبر (حجم الخط + 6 بكسل)
+                                new_page.insert_text((origin_x, origin_y + current_size + 6), 
                                                    fixed_ar, 
                                                    fontsize=current_size - 1, 
                                                    fontname="f0", 
                                                    fontfile=font_path, 
-                                                   color=(0.8, 0, 0)) # أحمر فاقع قليلاً ليكون واضحاً
+                                                   color=(0.8, 0, 0)) 
                             except: continue
 
         new_doc.save(output_path)
         new_doc.close()
         doc.close()
         with open(output_path, 'rb') as f:
-            bot.send_document(message.chat.id, f, caption="✅ تم التنسيق بالألوان المطلوبة.")
+            bot.send_document(message.chat.id, f, caption="✅ تم التنسيق مع تكبير المسافات.")
             
     except Exception as e:
         bot.reply_to(message, f"خطأ: {str(e)}")
