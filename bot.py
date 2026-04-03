@@ -11,12 +11,13 @@ bot = telebot.TeleBot(API_TOKEN)
 
 def fix_arabic(text):
     if not text: return ""
+    # إعادة تشكيل الحروف وتصحيح الاتجاه من اليمين لليسار
     reshaped_text = arabic_reshaper.reshape(text)
     return get_display(reshaped_text)
 
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
-    bot.reply_to(message, "تم زيادة المسافات بين الأسطر لراحة العين ✅\nأرسل الملزمة الآن.")
+    bot.reply_to(message, "تم ضبط اتجاه اللغة العربية من اليمين إلى اليسار ✅\nأرسل الملزمة الآن.")
 
 @bot.message_handler(content_types=['document'])
 def handle_pdf(message):
@@ -28,7 +29,7 @@ def handle_pdf(message):
     downloaded_file = bot.download_file(file_info.file_path)
     
     input_path = f"in_{message.chat.id}.pdf"
-    output_path = f"Mlazma_Spaced_{message.document.file_name}"
+    output_path = f"Mlazma_RTL_{message.document.file_name}"
     
     with open(input_path, 'wb') as f:
         f.write(downloaded_file)
@@ -41,13 +42,13 @@ def handle_pdf(message):
         for page in doc:
             new_page = new_doc.new_page(width=page.rect.width, height=page.rect.height)
             
-            # نقل الصور لمواقعها
+            # نقل الصور
             for img_info in page.get_image_info():
                 try:
                     new_page.insert_image(img_info["bbox"], stream=doc.extract_image(img_info["xref"])["image"])
                 except: pass
 
-            # معالجة النصوص وترجمتها
+            # معالجة النصوص
             blocks = page.get_text("dict")["blocks"]
             for b in blocks:
                 if "lines" in b:
@@ -58,35 +59,39 @@ def handle_pdf(message):
                             
                             origin_x, origin_y = s["origin"]
                             original_size = s["size"]
+                            bbox = s["bbox"] # نحتاج حدود السطر لضبط الموقع
                             
                             try:
                                 trans = GoogleTranslator(source='en', target='ar').translate(txt)
                                 fixed_ar = fix_arabic(trans)
 
-                                # تحديد حجم الخط (16 للعناوين و 14 للعادي)
                                 if original_size > 13 or len(txt) < 30:
                                     current_size = 16
                                 else:
                                     current_size = 14
 
-                                # 1. كتابة النص الإنجليزي (أسود)
+                                # 1. كتابة الإنجليزي (يسار -> يمين)
                                 new_page.insert_text((origin_x, origin_y), txt, fontsize=current_size, color=(0, 0, 0))
                                 
-                                # 2. كتابة النص العربي (أحمر) 
-                                # زدنا الإزاحة هنا لتكون المسافة أكبر (حجم الخط + 6 بكسل)
-                                new_page.insert_text((origin_x, origin_y + current_size + 6), 
-                                                   fixed_ar, 
-                                                   fontsize=current_size - 1, 
-                                                   fontname="f0", 
-                                                   fontfile=font_path, 
-                                                   color=(0.8, 0, 0)) 
+                                # 2. كتابة العربي تحت الإنجليزي
+                                # استخدمنا TEXT_ALIGN_RIGHT لضمان المحاذاة لجهة اليمين ضمن نطاق السطر
+                                rect_ar = fitz.Rect(bbox[0], origin_y + 2, bbox[2], origin_y + current_size + 10)
+                                
+                                new_page.insert_textbox(rect_ar, 
+                                                       fixed_ar, 
+                                                       fontsize=current_size - 1, 
+                                                       fontname="f0", 
+                                                       fontfile=font_path, 
+                                                       color=(0.8, 0, 0),
+                                                       align=fitz.TEXT_ALIGN_RIGHT) # محاذاة لليمين
+                                
                             except: continue
 
         new_doc.save(output_path)
         new_doc.close()
         doc.close()
         with open(output_path, 'rb') as f:
-            bot.send_document(message.chat.id, f, caption="✅ تم التنسيق مع تكبير المسافات.")
+            bot.send_document(message.chat.id, f, caption="✅ تم التنسيق مع ضبط اتجاه النص العربي.")
             
     except Exception as e:
         bot.reply_to(message, f"خطأ: {str(e)}")
