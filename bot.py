@@ -16,7 +16,7 @@ def fix_arabic(text):
 
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
-    bot.reply_to(message, "مرحباً! أرسل الملزمة وسأقوم بإعادة تصميمها مع تكبير العناوين (16) في مواقعها الأصلية ✅")
+    bot.reply_to(message, "تم تحديث الألوان: الإنجليزي (أسود) ⚫ والعربي (أحمر) 🔴\nأرسل الملزمة الآن.")
 
 @bot.message_handler(content_types=['document'])
 def handle_pdf(message):
@@ -28,33 +28,26 @@ def handle_pdf(message):
     downloaded_file = bot.download_file(file_info.file_path)
     
     input_path = f"in_{message.chat.id}.pdf"
-    output_path = f"Fixed_Mlazma_{message.document.file_name}"
+    output_path = f"Mlazma_Colored_{message.document.file_name}"
     
     with open(input_path, 'wb') as f:
         f.write(downloaded_file)
 
-    bot.reply_to(message, "⏳ جاري إعادة الهيكلة.. العناوين ستكون بحجم 16 وفي مكانها الأصلي.")
-    
     try:
         doc = fitz.open(input_path)
         new_doc = fitz.open()
         font_path = "Amiri.ttf" 
 
         for page in doc:
-            # إنشاء صفحة جديدة بنفس أبعاد الصفحة الأصلية تماماً
             new_page = new_doc.new_page(width=page.rect.width, height=page.rect.height)
             
-            # 1. نقل الصور لمواقعها الأصلية
-            image_list = page.get_images(full=True)
+            # نقل الصور لمواقعها
             for img_info in page.get_image_info():
                 try:
-                    img_rect = img_info["bbox"]
-                    xref = img_info["xref"]
-                    base_image = doc.extract_image(xref)
-                    new_page.insert_image(img_rect, stream=base_image["image"])
+                    new_page.insert_image(img_info["bbox"], stream=doc.extract_image(img_info["xref"])["image"])
                 except: pass
 
-            # 2. معالجة النصوص (إبقاء المواقع الأصلية وتكبير العناوين)
+            # معالجة النصوص وترجمتها
             blocks = page.get_text("dict")["blocks"]
             for b in blocks:
                 if "lines" in b:
@@ -63,46 +56,37 @@ def handle_pdf(message):
                             txt = s["text"].strip()
                             if len(txt) < 2: continue
                             
-                            # إحداثيات النص الأصلي
                             origin_x, origin_y = s["origin"]
                             original_size = s["size"]
                             
                             try:
-                                # ترجمة النص
                                 trans = GoogleTranslator(source='en', target='ar').translate(txt)
                                 fixed_ar = fix_arabic(trans)
 
-                                # --- تحديد العنوان (إذا كان حجم الخط الأصلي كبيراً أو النص قصيراً) ---
-                                is_title = original_size > 13 or len(txt) < 30
-                                
-                                if is_title:
-                                    # العنوان: حجم 16، لون أحمر، في موقعه الأصلي
+                                # تحديد حجم الخط (16 للعناوين و 14 للعادي)
+                                if original_size > 13 or len(txt) < 30:
                                     current_size = 16
-                                    color = (0.8, 0, 0) # أحمر داكن
                                 else:
-                                    # النص العادي: حجم 14
                                     current_size = 14
-                                    color = (0, 0, 0) # أسود
 
-                                # كتابة النص الإنجليزي في موقعه
-                                new_page.insert_text((origin_x, origin_y), txt, fontsize=current_size, color=color)
+                                # 1. كتابة النص الإنجليزي (أسود دائماً)
+                                new_page.insert_text((origin_x, origin_y), txt, fontsize=current_size, color=(0, 0, 0))
                                 
-                                # كتابة الترجمة العربية تحتها مباشرة (إزاحة بسيطة لأسفل)
+                                # 2. كتابة النص العربي (أحمر دائماً)
+                                # الإزاحة بمقدار حجم الخط + 2 بكسل لضمان عدم التداخل
                                 new_page.insert_text((origin_x, origin_y + current_size + 2), 
                                                    fixed_ar, 
                                                    fontsize=current_size - 1, 
                                                    fontname="f0", 
                                                    fontfile=font_path, 
-                                                   color=(0.6, 0, 0)) # ترجمة بلون مميز
-                            except:
-                                continue
+                                                   color=(0.8, 0, 0)) # أحمر فاقع قليلاً ليكون واضحاً
+                            except: continue
 
         new_doc.save(output_path)
         new_doc.close()
         doc.close()
-
         with open(output_path, 'rb') as f:
-            bot.send_document(message.chat.id, f, caption="✅ اكتملت الملزمة المنسقة!")
+            bot.send_document(message.chat.id, f, caption="✅ تم التنسيق بالألوان المطلوبة.")
             
     except Exception as e:
         bot.reply_to(message, f"خطأ: {str(e)}")
