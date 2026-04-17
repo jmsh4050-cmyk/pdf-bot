@@ -1,4 +1,5 @@
 
+
 import telebot
 import fitz  # PyMuPDF
 from deep_translator import GoogleTranslator
