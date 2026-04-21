@@ -3,3 +3,5 @@ PyMuPDF
 deep-translator
 arabic-reshaper
 python-bidi
+telethon
+
