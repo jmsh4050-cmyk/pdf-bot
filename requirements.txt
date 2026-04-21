@@ -1,6 +1,9 @@
 pyTelegramBotAPI
-pymupdf
+
+PyMuPDF
+
 deep-translator
-fpdf
+
 arabic-reshaper
+
 python-bidi
