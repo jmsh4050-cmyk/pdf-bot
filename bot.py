@@ -1,5 +1,4 @@
 
-
 import telebot
 import fitz  # PyMuPDF
 from deep_translator import GoogleTranslator
@@ -289,9 +288,7 @@ def run_highlight_style(message, file_info):
     except Exception as e: bot.reply_to(message, f"خطأ في شكل الهايلايت الرفيع: {e}")
 
 # --- تشغيل البوت ---
-
 bot.polling()
-
 
 
               
