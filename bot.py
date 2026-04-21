@@ -289,6 +289,7 @@ def run_highlight_style(message, file_info):
     except Exception as e: bot.reply_to(message, f"خطأ في شكل الهايلايت الرفيع: {e}")
 
 # --- تشغيل البوت ---
+
 bot.polling()
 
 
