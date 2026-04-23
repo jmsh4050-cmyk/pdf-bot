@@ -1,6 +1,6 @@
 pyTelegramBotAPI
 pymupdf
-googletrans==4.0.0-rc1
+deep-translator
 fpdf
 arabic-reshaper
 python-bidi
